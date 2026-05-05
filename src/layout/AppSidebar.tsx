@@ -11,6 +11,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -20,6 +21,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/medifood/Logo";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/store/auth";
+import { canAccess, ROLE_BADGE, ROLE_SHORT } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -36,6 +40,10 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const user = useAuth((s) => s.user);
+
+  const visible = items.filter((i) => canAccess(user?.role, i.url));
+  const initials = (user?.name ?? "??").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -46,7 +54,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1 px-2 pt-3">
-              {items.map((item) => {
+              {visible.map((item) => {
                 const active = location.pathname.startsWith(item.url);
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -71,6 +79,23 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      {user && !collapsed && (
+        <SidebarFooter className="border-t border-sidebar-border bg-sidebar p-3">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-sidebar-foreground">{user.name}</div>
+              <span className={cn("inline-block mt-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium", ROLE_BADGE[user.role])}>
+                {ROLE_SHORT[user.role]}{user.assignedProduct ? ` · ${user.assignedProduct}` : ""}
+              </span>
+            </div>
+          </div>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }
