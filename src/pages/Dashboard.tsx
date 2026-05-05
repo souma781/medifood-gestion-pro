@@ -17,6 +17,7 @@ import {
   Cell,
 } from "recharts";
 import { useData } from "@/store/data";
+import { useAuth } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { StatusBadge } from "@/components/medifood/StatusBadge";
 import { formatTND, formatKg, formatDate, formatNumber } from "@/lib/format";
@@ -50,14 +51,20 @@ function KpiCard({ icon: Icon, label, value, trend, accent }: any) {
 
 export default function Dashboard() {
   const { production, products, orders } = useData();
+  const user = useAuth((s) => s.user);
+  const role = user?.role;
+  const isCommercial = role === "Responsable Commercial";
+  const isProd = role === "Responsable Production";
+  const assignedProductId = isProd ? products.find((p) => p.name === user?.assignedProduct)?.id : undefined;
 
   const today = new Date();
   const todayKey = today.toDateString();
   const yesterdayKey = new Date(today.getTime() - 86400000).toDateString();
 
-  const todayProd = production.filter((p) => new Date(p.date).toDateString() === todayKey).reduce((s, p) => s + p.produced, 0);
-  const yProd = production.filter((p) => new Date(p.date).toDateString() === yesterdayKey).reduce((s, p) => s + p.produced, 0);
-  const totalStock = products.reduce((s, p) => s + p.currentStock, 0);
+  const filteredProd = assignedProductId ? production.filter((p) => p.productId === assignedProductId) : production;
+  const todayProd = filteredProd.filter((p) => new Date(p.date).toDateString() === todayKey).reduce((s, p) => s + p.produced, 0);
+  const yProd = filteredProd.filter((p) => new Date(p.date).toDateString() === yesterdayKey).reduce((s, p) => s + p.produced, 0);
+  const totalStock = (assignedProductId ? products.filter((p) => p.id === assignedProductId) : products).reduce((s, p) => s + p.currentStock, 0);
   const pending = orders.filter((o) => o.status === "En attente" || o.status === "Confirmée").length;
   const monthRevenue = orders
     .filter((o) => o.status === "Livrée" && new Date(o.date).getMonth() === today.getMonth())
@@ -103,10 +110,24 @@ export default function Dashboard() {
       <PageHeader title="Tableau de bord" description="Vue d'ensemble de l'activité — MEDIFOOD Tunisie" />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KpiCard icon={Factory} label="Production du jour" value={formatKg(todayProd)} trend={{ up: trendUp, value: trendVal }} accent="bg-primary/10 text-primary" />
-        <KpiCard icon={Package} label="Stock total" value={formatKg(totalStock)} accent="bg-accent/15 text-accent" />
-        <KpiCard icon={ShoppingCart} label="Commandes en cours" value={formatNumber(pending)} accent="bg-info/15 text-info" />
-        <KpiCard icon={Wallet} label="Chiffre d'affaires (mois)" value={formatTND(monthRevenue)} accent="bg-success/15 text-success" />
+        {isCommercial ? (
+          <>
+            <KpiCard icon={ShoppingCart} label="Commandes en cours" value={formatNumber(pending)} accent="bg-info/15 text-info" />
+            <KpiCard icon={Wallet} label="Chiffre d'affaires (mois)" value={formatTND(monthRevenue)} accent="bg-success/15 text-success" />
+          </>
+        ) : isProd ? (
+          <>
+            <KpiCard icon={Factory} label={`Production du jour — ${user?.assignedProduct}`} value={formatKg(todayProd)} trend={{ up: trendUp, value: trendVal }} accent="bg-primary/10 text-primary" />
+            <KpiCard icon={Package} label="Stock produit assigné" value={formatKg(totalStock)} accent="bg-accent/15 text-accent" />
+          </>
+        ) : (
+          <>
+            <KpiCard icon={Factory} label="Production du jour" value={formatKg(todayProd)} trend={{ up: trendUp, value: trendVal }} accent="bg-primary/10 text-primary" />
+            <KpiCard icon={Package} label="Stock total" value={formatKg(totalStock)} accent="bg-accent/15 text-accent" />
+            <KpiCard icon={ShoppingCart} label="Commandes en cours" value={formatNumber(pending)} accent="bg-info/15 text-info" />
+            <KpiCard icon={Wallet} label="Chiffre d'affaires (mois)" value={formatTND(monthRevenue)} accent="bg-success/15 text-success" />
+          </>
+        )}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
