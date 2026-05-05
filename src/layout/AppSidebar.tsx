@@ -4,7 +4,7 @@ import {
   Factory,
   Package,
   ShoppingCart,
-  FileText,
+  Truck,
   Users,
   Settings,
 } from "lucide-react";
@@ -27,7 +27,7 @@ const items = [
   { title: "Production", url: "/production", icon: Factory },
   { title: "Inventaire", url: "/inventaire", icon: Package },
   { title: "Commandes", url: "/commandes", icon: ShoppingCart },
-  { title: "Facturation", url: "/facturation", icon: FileText },
+  { title: "Bons de livraison", url: "/bons-de-livraison", icon: Truck },
   { title: "Clients", url: "/clients", icon: Users },
   { title: "Paramètres", url: "/parametres", icon: Settings },
 ];
