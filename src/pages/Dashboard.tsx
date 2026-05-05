@@ -55,16 +55,18 @@ export default function Dashboard() {
   const role = user?.role;
   const isCommercial = role === "Responsable Commercial";
   const isProd = role === "Responsable Production";
-  const assignedProductId = isProd ? products.find((p) => p.name === user?.assignedProduct)?.id : undefined;
+  const assignedProductIds = isProd && user?.assignedProducts?.length
+    ? products.filter((p) => user.assignedProducts!.includes(p.name)).map((p) => p.id)
+    : undefined;
 
   const today = new Date();
   const todayKey = today.toDateString();
   const yesterdayKey = new Date(today.getTime() - 86400000).toDateString();
 
-  const filteredProd = assignedProductId ? production.filter((p) => p.productId === assignedProductId) : production;
+  const filteredProd = assignedProductIds?.length ? production.filter((p) => assignedProductIds.includes(p.productId)) : production;
   const todayProd = filteredProd.filter((p) => new Date(p.date).toDateString() === todayKey).reduce((s, p) => s + p.produced, 0);
   const yProd = filteredProd.filter((p) => new Date(p.date).toDateString() === yesterdayKey).reduce((s, p) => s + p.produced, 0);
-  const totalStock = (assignedProductId ? products.filter((p) => p.id === assignedProductId) : products).reduce((s, p) => s + p.currentStock, 0);
+  const totalStock = (assignedProductIds?.length ? products.filter((p) => assignedProductIds.includes(p.id)) : products).reduce((s, p) => s + p.currentStock, 0);
   const pending = orders.filter((o) => o.status === "En attente" || o.status === "Confirmée").length;
   const monthRevenue = orders
     .filter((o) => o.status === "Livrée" && new Date(o.date).getMonth() === today.getMonth())
@@ -117,7 +119,7 @@ export default function Dashboard() {
           </>
         ) : isProd ? (
           <>
-            <KpiCard icon={Factory} label={`Production du jour — ${user?.assignedProduct}`} value={formatKg(todayProd)} trend={{ up: trendUp, value: trendVal }} accent="bg-primary/10 text-primary" />
+            <KpiCard icon={Factory} label={`Production du jour — ${user?.assignedProducts?.join(", ") ?? ""}`} value={formatKg(todayProd)} trend={{ up: trendUp, value: trendVal }} accent="bg-primary/10 text-primary" />
             <KpiCard icon={Package} label="Stock produit assigné" value={formatKg(totalStock)} accent="bg-accent/15 text-accent" />
           </>
         ) : (

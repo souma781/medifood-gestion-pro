@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,38 +7,513 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle2, Circle, LayoutGrid, List, Plus, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Circle,
+  LayoutGrid,
+  List,
+  Plus,
+  Trash2,
+  Wrench,
+  ChevronRight,
+  PackageX,
+  Users,
+  FileText,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useData, OrderStatus, Order } from "@/store/data";
+import { useAuth, ProductionRole } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { StatusBadge } from "@/components/medifood/StatusBadge";
 import { formatTND, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const KANBAN: OrderStatus[] = ["En attente", "Confirmée", "En préparation", "Livrée"];
+// ─── Role helpers ────────────────────────────────────────────────────────────
 
-function Kanban() {
-  const { orders, clients, updateOrderStatus } = useData();
-  const onDragStart = (e: React.DragEvent, id: string) => e.dataTransfer.setData("id", id);
-  const onDrop = (e: React.DragEvent, status: OrderStatus) => {
-    const id = e.dataTransfer.getData("id");
-    if (id) { updateOrderStatus(id, status); toast.success("Statut mis à jour"); }
+const ALL_PROD_STATUSES: OrderStatus[] = [
+  "En attente", "En cuisson", "Cuit", "En emballage", "Terminé", "Refusé",
+];
+
+function getAllowedStatuses(productionRole: ProductionRole): OrderStatus[] {
+  switch (productionRole) {
+    case "cuisson": return ["En attente", "En cuisson", "Cuit", "Refusé"];
+    case "emballage": return ["En emballage", "Terminé", "Refusé"];
+    case "mixte": return ALL_PROD_STATUSES;
+  }
+}
+
+function getKanbanColumns(productionRole?: ProductionRole): OrderStatus[] {
+  if (!productionRole) return ALL_PROD_STATUSES;
+  switch (productionRole) {
+    case "cuisson": return ["En attente", "En cuisson", "Cuit"];
+    case "emballage": return ["Cuit", "En emballage", "Terminé", "Refusé"];
+    case "mixte": return ALL_PROD_STATUSES;
+  }
+}
+
+// ─── Status-change dialog ────────────────────────────────────────────────────
+
+type StatusDialogProps = {
+  order: Order | null;
+  productionRole: ProductionRole;
+  onClose: () => void;
+};
+
+function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
+  const { updateOrderStatus, addNotification, products } = useData();
+  const user = useAuth((s) => s.user);
+  const [newStatus, setNewStatus] = useState<OrderStatus | "">("");
+  const [mode, setMode] = useState<"total" | "partiel">("total");
+  const [partialQty, setPartialQty] = useState<Record<string, number>>({});
+  const [refusalReason, setRefusalReason] = useState("");
+
+  if (!order) return null;
+
+  const allowed = getAllowedStatuses(productionRole).filter((s) => s !== order.status);
+  const myProductItems = order.items.filter((it) => {
+    const prodName = products.find((p) => p.id === it.productId)?.name;
+    return prodName && user?.assignedProducts?.includes(prodName);
+  });
+
+  const submit = () => {
+    if (!newStatus) return;
+    const partial = mode === "partiel" ? partialQty : undefined;
+    updateOrderStatus(order.id, newStatus, partial, newStatus === "Refusé" ? refusalReason : undefined);
+
+    if (newStatus === "Refusé") {
+      addNotification({
+        date: new Date().toISOString(),
+        type: "commande_refusée",
+        message: `Commande ${order.number} refusée par ${user?.name ?? "Production"}. Raison : ${refusalReason || "Non précisée"}`,
+        orderId: order.id,
+        recipientRole: "Responsable Commercial",
+      });
+    }
+
+    toast.success(`Statut mis à jour : ${newStatus}`);
+    onClose();
   };
+
   return (
-    <div className="grid gap-4 lg:grid-cols-4">
-      {KANBAN.map((status) => {
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Changer le statut — {order.number}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label>Nouveau statut</Label>
+            <Select value={newStatus} onValueChange={(v) => setNewStatus(v as OrderStatus)}>
+              <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+              <SelectContent>
+                {allowed.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {newStatus && newStatus !== "Refusé" && (
+            <div className="space-y-1.5">
+              <Label>Traitement</Label>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={mode === "total" ? "default" : "outline"}
+                  onClick={() => setMode("total")}
+                >
+                  En totalité
+                </Button>
+                <Button
+                  size="sm"
+                  variant={mode === "partiel" ? "default" : "outline"}
+                  onClick={() => setMode("partiel")}
+                >
+                  En partie
+                </Button>
+              </div>
+              {mode === "partiel" && myProductItems.length > 0 && (
+                <div className="mt-2 space-y-2 rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Quantité traitée (kg)</p>
+                  {myProductItems.map((it) => {
+                    const prod = products.find((p) => p.id === it.productId);
+                    return (
+                      <div key={it.productId} className="flex items-center gap-3">
+                        <span className="flex-1 text-sm">{prod?.name}</span>
+                        <span className="text-xs text-muted-foreground">/ {it.quantity} kg</span>
+                        <Input
+                          type="number"
+                          className="w-24"
+                          placeholder="0"
+                          max={it.quantity}
+                          value={partialQty[it.productId] ?? ""}
+                          onChange={(e) =>
+                            setPartialQty({ ...partialQty, [it.productId]: parseFloat(e.target.value) || 0 })
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {newStatus === "Refusé" && (
+            <div className="space-y-1.5">
+              <Label>Motif du refus</Label>
+              <Textarea
+                rows={2}
+                placeholder="Expliquer la raison du refus..."
+                value={refusalReason}
+                onChange={(e) => setRefusalReason(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button
+            disabled={!newStatus || (newStatus === "Refusé" && !refusalReason.trim())}
+            variant={newStatus === "Refusé" ? "destructive" : "default"}
+            onClick={submit}
+          >
+            Confirmer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Incident dialog ─────────────────────────────────────────────────────────
+
+type IncidentDialogProps = {
+  order: Order | null;
+  open: boolean;
+  onClose: () => void;
+};
+
+type IncidentKind = "panne_machine" | "stock_insuffisant" | "manque_ouvriers" | "autre";
+
+const INCIDENT_OPTIONS: { value: IncidentKind; label: string; icon: React.ReactNode }[] = [
+  { value: "panne_machine", label: "Panne machine", icon: <Wrench className="h-3.5 w-3.5" /> },
+  { value: "stock_insuffisant", label: "Stock insuffisant", icon: <PackageX className="h-3.5 w-3.5" /> },
+  { value: "manque_ouvriers", label: "Manque d'ouvriers", icon: <Users className="h-3.5 w-3.5" /> },
+  { value: "autre", label: "Autre", icon: <FileText className="h-3.5 w-3.5" /> },
+];
+
+const INCIDENT_NOTIF_LABELS: Record<IncidentKind, string> = {
+  panne_machine: "Panne machine",
+  stock_insuffisant: "Stock insuffisant",
+  manque_ouvriers: "Manque d'ouvriers",
+  autre: "Incident signalé",
+};
+
+function IncidentDialog({ order, open, onClose }: IncidentDialogProps) {
+  const { addIncident, addNotification, products } = useData();
+  const user = useAuth((s) => s.user);
+  const [type, setType] = useState<IncidentKind>("panne_machine");
+  const [description, setDescription] = useState("");
+
+  const submit = () => {
+    addIncident({
+      date: new Date().toISOString(),
+      type,
+      description,
+      orderId: order?.id,
+      reportedBy: user?.name ?? "Production",
+    });
+
+    const label = INCIDENT_NOTIF_LABELS[type];
+    const orderRef = order ? ` (commande ${order.number})` : "";
+    addNotification({
+      date: new Date().toISOString(),
+      type,
+      message: `${label} signalé${type === "stock_insuffisant" || type === "panne_machine" ? "e" : ""} par ${user?.name ?? "Production"}${orderRef} : ${description}`,
+      orderId: order?.id,
+      recipientRole: "Responsable Commercial",
+    });
+
+    toast.success("Incident signalé");
+    setDescription("");
+    onClose();
+  };
+
+  const orderProductNames = order?.items
+    .map((it) => products.find((p) => p.id === it.productId)?.name)
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            Signaler un incident
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {order && (
+            <div className="rounded-lg bg-muted/40 p-3 text-sm">
+              <span className="text-muted-foreground">Commande : </span>
+              <span className="font-medium">{order.number}</span>
+              {orderProductNames && (
+                <span className="text-muted-foreground"> — {orderProductNames}</span>
+              )}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>Type d'incident</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {INCIDENT_OPTIONS.map((opt) => (
+                <Button
+                  key={opt.value}
+                  size="sm"
+                  variant={type === opt.value ? "default" : "outline"}
+                  onClick={() => setType(opt.value)}
+                  className="gap-1.5 justify-start"
+                >
+                  {opt.icon}
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              {type === "autre" ? "Description du problème" : "Description"}
+            </Label>
+            <Textarea
+              rows={3}
+              placeholder={
+                type === "autre"
+                  ? "Décrivez le problème en détail..."
+                  : type === "manque_ouvriers"
+                  ? "Nombre d'ouvriers manquants, poste concerné..."
+                  : type === "panne_machine"
+                  ? "Machine concernée, nature de la panne..."
+                  : "Produit concerné, quantité manquante..."
+              }
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button
+            disabled={!description.trim()}
+            onClick={submit}
+            className="gap-1.5"
+          >
+            <AlertTriangle className="h-4 w-4" />
+            Signaler
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Production order card ────────────────────────────────────────────────────
+
+type OrderCardProps = {
+  order: Order;
+  productionRole: ProductionRole;
+};
+
+function ProductionOrderCard({ order, productionRole }: OrderCardProps) {
+  const { clients, products } = useData();
+  const [statusDialog, setStatusDialog] = useState(false);
+  const [incidentDialog, setIncidentDialog] = useState(false);
+  const client = clients.find((c) => c.id === order.clientId);
+  const allowed = getAllowedStatuses(productionRole).filter((s) => s !== order.status);
+  const canChange = allowed.length > 0 && order.status !== "Terminé" && order.status !== "Refusé";
+
+  return (
+    <>
+      <Card className="card-soft border-0">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="font-mono text-xs text-muted-foreground">{order.number}</div>
+              <div className="mt-0.5 font-semibold text-sm">{client?.company ?? "—"}</div>
+            </div>
+            <StatusBadge status={order.status} />
+          </div>
+
+          <div className="mt-3 space-y-1">
+            {order.items.map((it, i) => {
+              const prod = products.find((p) => p.id === it.productId);
+              const partial = order.partialQuantities?.[it.productId];
+              return (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span>{prod?.name}</span>
+                  <span className="text-muted-foreground">
+                    {partial !== undefined ? (
+                      <span>
+                        <span className="font-medium text-warning">{partial}</span>
+                        <span> / {it.quantity} kg</span>
+                        <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 border-warning/40 text-warning">partiel</Badge>
+                      </span>
+                    ) : (
+                      `${it.quantity} kg`
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {order.refusalReason && (
+            <div className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+              Refus : {order.refusalReason}
+            </div>
+          )}
+
+          <div className="mt-3 text-xs text-muted-foreground">{formatDate(order.date)}</div>
+
+          {order.status !== "Terminé" && order.status !== "Refusé" && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {canChange && (
+                <Button size="sm" className="gap-1.5 h-8" onClick={() => setStatusDialog(true)}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                  Changer statut
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8 text-warning border-warning/40 hover:bg-warning/10"
+                onClick={() => setIncidentDialog(true)}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Incident
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {statusDialog && (
+        <StatusDialog
+          order={order}
+          productionRole={productionRole}
+          onClose={() => setStatusDialog(false)}
+        />
+      )}
+      <IncidentDialog
+        order={order}
+        open={incidentDialog}
+        onClose={() => setIncidentDialog(false)}
+      />
+    </>
+  );
+}
+
+// ─── Production view ──────────────────────────────────────────────────────────
+
+function ProductionView() {
+  const user = useAuth((s) => s.user);
+  const { orders, products } = useData();
+  const productionRole = user?.productionRole ?? "mixte";
+
+  const myOrders = orders.filter((o) =>
+    !user?.assignedProducts?.length ||
+    o.items.some((it) => {
+      const prodName = products.find((p) => p.id === it.productId)?.name;
+      return prodName && user.assignedProducts!.includes(prodName);
+    }),
+  );
+
+  const columns = getKanbanColumns(productionRole);
+  const [activeTab, setActiveTab] = useState<"kanban" | "liste">("kanban");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            {user?.assignedProducts?.length
+              ? `Commandes pour : ${user.assignedProducts.join(", ")}`
+              : "Toutes les commandes de production"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5 capitalize">
+            Rôle : {productionRole}
+          </p>
+        </div>
+        <div className="flex gap-1 rounded-md border border-border bg-card p-1">
+          <Button size="sm" variant={activeTab === "kanban" ? "default" : "ghost"} onClick={() => setActiveTab("kanban")}>
+            <LayoutGrid className="h-4 w-4 mr-1" />Kanban
+          </Button>
+          <Button size="sm" variant={activeTab === "liste" ? "default" : "ghost"} onClick={() => setActiveTab("liste")}>
+            <List className="h-4 w-4 mr-1" />Liste
+          </Button>
+        </div>
+      </div>
+
+      {activeTab === "kanban" ? (
+        <div className={cn("grid gap-4", columns.length <= 3 ? "md:grid-cols-3" : columns.length <= 4 ? "md:grid-cols-4" : "md:grid-cols-3 lg:grid-cols-6")}>
+          {columns.map((col) => {
+            const list = myOrders.filter((o) => o.status === col);
+            return (
+              <div key={col} className="rounded-lg bg-muted/40 p-3">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">{col}</h3>
+                  <span className="rounded-full bg-card px-2 py-0.5 text-xs">{list.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {list.map((o) => (
+                    <ProductionOrderCard key={o.id} order={o} productionRole={productionRole} />
+                  ))}
+                  {list.length === 0 && (
+                    <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+                      Aucune commande
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {myOrders.length === 0 && (
+            <div className="py-12 text-center text-muted-foreground">Aucune commande assignée</div>
+          )}
+          {myOrders.map((o) => (
+            <ProductionOrderCard key={o.id} order={o} productionRole={productionRole} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Commercial kanban (read-only statuses, managed by production) ────────────
+
+function CommercialKanban() {
+  const { orders, clients } = useData();
+  return (
+    <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      {ALL_PROD_STATUSES.map((status) => {
         const list = orders.filter((o) => o.status === status);
         return (
-          <div key={status} className="rounded-lg bg-muted/40 p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, status)}>
+          <div key={status} className="rounded-lg bg-muted/40 p-3">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">{status}</h3>
+              <h3 className="text-sm font-semibold">{status}</h3>
               <span className="rounded-full bg-card px-2 py-0.5 text-xs">{list.length}</span>
             </div>
             <div className="space-y-2">
               {list.map((o) => {
                 const total = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                 return (
-                  <div key={o.id} draggable onDragStart={(e) => onDragStart(e, o.id)} className="cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm hover:shadow-md transition">
+                  <div key={o.id} className="rounded-lg border border-border bg-card p-3 shadow-sm">
                     <div className="font-mono text-xs text-muted-foreground">{o.number}</div>
                     <div className="mt-1 font-medium text-sm">{clients.find((c) => c.id === o.clientId)?.company}</div>
                     <div className="mt-2 flex items-center justify-between text-xs">
@@ -46,10 +521,19 @@ function Kanban() {
                       <span className="font-semibold text-primary">{formatTND(total)}</span>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">{formatDate(o.date)}</div>
+                    {o.refusalReason && (
+                      <div className="mt-1.5 rounded bg-destructive/10 px-1.5 py-1 text-[10px] text-destructive leading-tight">
+                        {o.refusalReason}
+                      </div>
+                    )}
                   </div>
                 );
               })}
-              {list.length === 0 && <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">Aucune commande</div>}
+              {list.length === 0 && (
+                <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+                  Aucune commande
+                </div>
+              )}
             </div>
           </div>
         );
@@ -58,8 +542,8 @@ function Kanban() {
   );
 }
 
-function ListView() {
-  const { orders, clients, updateOrderStatus } = useData();
+function CommercialListView() {
+  const { orders, clients } = useData();
   return (
     <Card className="card-soft border-0">
       <CardContent className="p-0">
@@ -72,7 +556,6 @@ function ListView() {
               <TableHead className="text-right">Produits</TableHead>
               <TableHead className="text-right">Montant</TableHead>
               <TableHead>Statut</TableHead>
-              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -85,16 +568,11 @@ function ListView() {
                   <TableCell>{formatDate(o.date)}</TableCell>
                   <TableCell className="text-right">{o.items.length}</TableCell>
                   <TableCell className="text-right font-semibold">{formatTND(total)}</TableCell>
-                  <TableCell><StatusBadge status={o.status} /></TableCell>
                   <TableCell>
-                    <Select value={o.status} onValueChange={(v) => { updateOrderStatus(o.id, v as OrderStatus); toast.success("Statut mis à jour"); }}>
-                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {(["En attente", "Confirmée", "En préparation", "Livrée", "Annulée"] as OrderStatus[]).map((s) => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <StatusBadge status={o.status} />
+                    {o.refusalReason && (
+                      <div className="mt-1 text-xs text-muted-foreground max-w-48 truncate">{o.refusalReason}</div>
+                    )}
                   </TableCell>
                 </TableRow>
               );
@@ -105,6 +583,8 @@ function ListView() {
     </Card>
   );
 }
+
+// ─── New Order wizard ─────────────────────────────────────────────────────────
 
 function NewOrder() {
   const { clients, products, addOrder } = useData();
@@ -219,13 +699,16 @@ function NewOrder() {
   );
 }
 
+// ─── Tracking (commercial view) ───────────────────────────────────────────────
+
 function Tracking() {
   const { orders, clients } = useData();
-  const steps = ["En attente", "Confirmée", "En préparation", "Livrée"] as const;
-  const idx = (s: Order["status"]) => steps.indexOf(s as any);
+  const steps = ALL_PROD_STATUSES;
+  const idx = (s: OrderStatus) => steps.indexOf(s);
+
   return (
     <div className="space-y-3">
-      {orders.slice(0, 6).map((o) => {
+      {orders.filter((o) => o.status !== "Refusé").slice(0, 6).map((o) => {
         const current = idx(o.status);
         return (
           <Card key={o.id} className="card-soft border-0">
@@ -237,16 +720,23 @@ function Tracking() {
                 </div>
                 <StatusBadge status={o.status} />
               </div>
-              <div className="flex items-center justify-between">
-                {steps.map((s, i) => (
-                  <div key={s} className="flex flex-1 items-center">
-                    <div className="flex flex-col items-center gap-1">
-                      {i <= current ? <CheckCircle2 className="h-6 w-6 text-success" /> : <Circle className="h-6 w-6 text-muted-foreground" />}
-                      <span className={cn("text-xs", i <= current ? "font-medium" : "text-muted-foreground")}>{s}</span>
+              <div className="flex items-center justify-between overflow-x-auto">
+                {(["En attente", "En cuisson", "Cuit", "En emballage", "Terminé"] as OrderStatus[]).map((s, i) => {
+                  const done = idx(s) <= current;
+                  return (
+                    <div key={s} className="flex flex-1 items-center min-w-0">
+                      <div className="flex flex-col items-center gap-1 shrink-0">
+                        {done ? (
+                          <CheckCircle2 className="h-5 w-5 text-success" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-muted-foreground" />
+                        )}
+                        <span className={cn("text-[10px] text-center leading-tight max-w-12", done ? "font-medium" : "text-muted-foreground")}>{s}</span>
+                      </div>
+                      {i < 4 && <div className={cn("h-0.5 flex-1 mx-1", done && idx(steps[i + 1]) <= current ? "bg-success" : "bg-border")} />}
                     </div>
-                    {i < steps.length - 1 && <div className={cn("h-0.5 flex-1 mx-2", i < current ? "bg-success" : "bg-border")} />}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -256,8 +746,47 @@ function Tracking() {
   );
 }
 
+// ─── Standalone incident report (for production, not tied to an order) ────────
+
+function IncidentReport() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Button
+        variant="outline"
+        className="gap-2 border-warning/40 text-warning hover:bg-warning/10"
+        onClick={() => setOpen(true)}
+      >
+        <AlertTriangle className="h-4 w-4" />
+        Signaler un incident général
+      </Button>
+      <IncidentDialog order={null} open={open} onClose={() => setOpen(false)} />
+    </div>
+  );
+}
+
+// ─── Page root ────────────────────────────────────────────────────────────────
+
 export default function Commandes() {
+  const user = useAuth((s) => s.user);
+  const isProduction = user?.role === "Responsable Production";
   const [view, setView] = useState<"kanban" | "list">("kanban");
+
+  if (isProduction) {
+    return (
+      <div>
+        <PageHeader
+          title="Mes Commandes"
+          description={`Suivi de production${user?.assignedProducts?.length ? ` — ${user.assignedProducts.join(", ")}` : ""}`}
+        />
+        <div className="mb-4">
+          <IncidentReport />
+        </div>
+        <ProductionView />
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader title="Commandes" description="Gestion et suivi des commandes clients" />
@@ -269,10 +798,14 @@ export default function Commandes() {
         </TabsList>
         <TabsContent value="all" className="mt-4">
           <div className="mb-3 flex justify-end gap-1 rounded-md border border-border bg-card p-1 w-fit ml-auto">
-            <Button size="sm" variant={view === "kanban" ? "default" : "ghost"} onClick={() => setView("kanban")}><LayoutGrid className="h-4 w-4 mr-1" />Kanban</Button>
-            <Button size="sm" variant={view === "list" ? "default" : "ghost"} onClick={() => setView("list")}><List className="h-4 w-4 mr-1" />Liste</Button>
+            <Button size="sm" variant={view === "kanban" ? "default" : "ghost"} onClick={() => setView("kanban")}>
+              <LayoutGrid className="h-4 w-4 mr-1" />Kanban
+            </Button>
+            <Button size="sm" variant={view === "list" ? "default" : "ghost"} onClick={() => setView("list")}>
+              <List className="h-4 w-4 mr-1" />Liste
+            </Button>
           </div>
-          {view === "kanban" ? <Kanban /> : <ListView />}
+          {view === "kanban" ? <CommercialKanban /> : <CommercialListView />}
         </TabsContent>
         <TabsContent value="new" className="mt-4"><NewOrder /></TabsContent>
         <TabsContent value="track" className="mt-4"><Tracking /></TabsContent>

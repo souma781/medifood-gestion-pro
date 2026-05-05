@@ -90,7 +90,7 @@ export function AppSidebar() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-sidebar-foreground">{user.name}</div>
               <span className={cn("inline-block mt-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium", ROLE_BADGE[user.role])}>
-                {ROLE_SHORT[user.role]}{user.assignedProduct ? ` · ${user.assignedProduct}` : ""}
+                {ROLE_SHORT[user.role]}{user.assignedProducts?.length ? ` · ${user.assignedProducts.join(", ")}` : ""}
               </span>
             </div>
           </div>

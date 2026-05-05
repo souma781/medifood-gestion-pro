@@ -3,6 +3,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { useAuth } from "@/store/auth";
+import { ChatAssistant } from "@/components/medifood/ChatAssistant";
 
 export default function AppLayout() {
   const isAuthenticated = useAuth((s) => s.isAuthenticated);
@@ -18,6 +19,7 @@ export default function AppLayout() {
           </main>
         </div>
       </div>
+      <ChatAssistant />
     </SidebarProvider>
   );
 }

@@ -4,7 +4,7 @@ export const ROUTE_ACCESS: Record<string, Role[]> = {
   "/dashboard": ["Admin", "Responsable Commercial", "Responsable Production"],
   "/production": ["Admin", "Responsable Production"],
   "/inventaire": ["Admin"],
-  "/commandes": ["Admin", "Responsable Commercial"],
+  "/commandes": ["Admin", "Responsable Commercial", "Responsable Production"],
   "/bons-de-livraison": ["Admin", "Responsable Commercial"],
   "/clients": ["Admin", "Responsable Commercial"],
   "/parametres": ["Admin", "Responsable Commercial", "Responsable Production"],

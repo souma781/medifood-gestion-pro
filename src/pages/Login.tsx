@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { useAuth, MOCK_USERS } from "@/store/auth";
+import { useAuth } from "@/store/auth";
 import { ROLE_BADGE, ROLE_SHORT } from "@/lib/rbac";
 import { Logo } from "@/components/medifood/Logo";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ export default function Login() {
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
   const login = useAuth((s) => s.login);
+  const users = useAuth((s) => s.users);
   const navigate = useNavigate();
 
   const onSubmit = (e: React.FormEvent) => {
@@ -32,7 +33,7 @@ export default function Login() {
     }, 500);
   };
 
-  const fill = (u: typeof MOCK_USERS[number]) => {
+  const fill = (u: typeof users[number]) => {
     setEmail(u.email);
     setPassword(u.password);
   };
@@ -73,7 +74,7 @@ export default function Login() {
                 Comptes de démonstration
               </p>
               <div className="space-y-1.5">
-                {MOCK_USERS.map((u) => (
+                {users.map((u) => (
                   <button
                     key={u.email}
                     type="button"
@@ -85,7 +86,7 @@ export default function Login() {
                       <div className="text-muted-foreground">{u.email}</div>
                     </div>
                     <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium", ROLE_BADGE[u.role])}>
-                      {ROLE_SHORT[u.role]}{u.assignedProduct ? ` · ${u.assignedProduct}` : ""}
+                      {ROLE_SHORT[u.role]}{u.assignedProducts?.length ? ` · ${u.assignedProducts.join(", ")}` : ""}
                     </span>
                   </button>
                 ))}

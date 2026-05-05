@@ -19,7 +19,7 @@ export type Product = {
 
 export type ProductionEntry = {
   id: string;
-  date: string; // ISO
+  date: string;
   productId: string;
   produced: number;
   packaged: number;
@@ -51,7 +51,13 @@ export type Client = {
   active: boolean;
 };
 
-export type OrderStatus = "En attente" | "Confirmée" | "En préparation" | "Livrée" | "Annulée";
+export type OrderStatus =
+  | "En attente"
+  | "En cuisson"
+  | "Cuit"
+  | "En emballage"
+  | "Terminé"
+  | "Refusé";
 
 export type OrderItem = { productId: string; quantity: number; unitPrice: number };
 
@@ -64,6 +70,8 @@ export type Order = {
   items: OrderItem[];
   status: OrderStatus;
   notes?: string;
+  partialQuantities?: Record<string, number>; // productId → qty en cours
+  refusalReason?: string;
 };
 
 export type BonStatus = "Brouillon" | "Émis" | "Livré";
@@ -85,6 +93,30 @@ export type BonLivraison = {
   items: BonItem[];
   status: BonStatus;
   notes?: string;
+};
+
+export type NotificationType = "stock_insuffisant" | "panne_machine" | "commande_refusée" | "manque_ouvriers" | "autre";
+
+export type AppNotification = {
+  id: string;
+  date: string;
+  type: NotificationType;
+  message: string;
+  orderId?: string;
+  read: boolean;
+  recipientRole: "Responsable Commercial" | "Admin";
+};
+
+export type IncidentType = "panne_machine" | "stock_insuffisant" | "manque_ouvriers" | "autre";
+
+export type Incident = {
+  id: string;
+  date: string;
+  type: IncidentType;
+  description: string;
+  orderId?: string;
+  productId?: string;
+  reportedBy: string;
 };
 
 export type Operator = string;
@@ -140,7 +172,7 @@ function genProduction(): ProductionEntry[] {
 }
 
 function genOrders(): Order[] {
-  const statuses: OrderStatus[] = ["En attente", "Confirmée", "En préparation", "Livrée", "En attente", "Confirmée", "Livrée"];
+  const statuses: OrderStatus[] = ["En attente", "En cuisson", "Cuit", "En emballage", "Terminé", "En attente", "Terminé", "Refusé", "En cuisson"];
   const out: Order[] = [];
   for (let i = 0; i < 15; i++) {
     const date = new Date();
@@ -151,6 +183,7 @@ function genOrders(): Order[] {
       const p = pick(products);
       items.push({ productId: p.id, quantity: rand(20, 200), unitPrice: rand(15, 60) });
     }
+    const status = statuses[i % statuses.length];
     out.push({
       id: `o${i + 1}`,
       number: `CMD-${2026}-${String(i + 1).padStart(4, "0")}`,
@@ -158,7 +191,8 @@ function genOrders(): Order[] {
       date: date.toISOString(),
       deliveryDate: new Date(date.getTime() + 7 * 86400000).toISOString(),
       items,
-      status: statuses[i % statuses.length],
+      status,
+      refusalReason: status === "Refusé" ? "Stock insuffisant pour traiter la commande" : undefined,
     });
   }
   return out.sort((a, b) => b.date.localeCompare(a.date));
@@ -213,6 +247,27 @@ function genMovements(): StockMovement[] {
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
+function genInitialNotifications(): AppNotification[] {
+  return [
+    {
+      id: "n1",
+      date: new Date(Date.now() - 2 * 3600000).toISOString(),
+      type: "stock_insuffisant",
+      message: "Stock Pistaches insuffisant (145 kg < seuil 150 kg). Réapprovisionnement requis.",
+      read: false,
+      recipientRole: "Responsable Commercial",
+    },
+    {
+      id: "n2",
+      date: new Date(Date.now() - 5 * 3600000).toISOString(),
+      type: "stock_insuffisant",
+      message: "Stock Fruits enrobés chocolat critique (95 kg < seuil 200 kg).",
+      read: false,
+      recipientRole: "Responsable Commercial",
+    },
+  ];
+}
+
 type DataState = {
   products: Product[];
   clients: Client[];
@@ -221,16 +276,27 @@ type DataState = {
   orders: Order[];
   bons: BonLivraison[];
   movements: StockMovement[];
+  notifications: AppNotification[];
+  incidents: Incident[];
 
   addProduction: (e: Omit<ProductionEntry, "id">) => void;
   deleteProduction: (id: string) => void;
   addMovement: (m: Omit<StockMovement, "id">) => void;
   addOrder: (o: Omit<Order, "id" | "number">) => void;
-  updateOrderStatus: (id: string, status: OrderStatus) => void;
+  updateOrderStatus: (
+    id: string,
+    status: OrderStatus,
+    partialQuantities?: Record<string, number>,
+    refusalReason?: string,
+  ) => void;
   addClient: (c: Omit<Client, "id" | "active">) => void;
   updateClient: (c: Client) => void;
   addBon: (b: Omit<BonLivraison, "id" | "number">) => string;
   updateBonStatus: (id: string, status: BonStatus) => void;
+  addNotification: (n: Omit<AppNotification, "id" | "read">) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: (role: "Responsable Commercial" | "Admin") => void;
+  addIncident: (i: Omit<Incident, "id">) => void;
 };
 
 export const useData = create<DataState>((set) => ({
@@ -241,6 +307,8 @@ export const useData = create<DataState>((set) => ({
   orders: genOrders(),
   bons: genBons(),
   movements: genMovements(),
+  notifications: genInitialNotifications(),
+  incidents: [],
 
   addProduction: (e) =>
     set((s) => ({
@@ -264,7 +332,19 @@ export const useData = create<DataState>((set) => ({
         ...s.orders,
       ],
     })),
-  updateOrderStatus: (id, status) => set((s) => ({ orders: s.orders.map((o) => (o.id === id ? { ...o, status } : o)) })),
+  updateOrderStatus: (id, status, partialQuantities, refusalReason) =>
+    set((s) => ({
+      orders: s.orders.map((o) =>
+        o.id === id
+          ? {
+              ...o,
+              status,
+              partialQuantities: partialQuantities ?? (status === "Terminé" ? undefined : o.partialQuantities),
+              refusalReason: refusalReason ?? o.refusalReason,
+            }
+          : o,
+      ),
+    })),
   addClient: (c) => set((s) => ({ clients: [...s.clients, { ...c, id: `c-${Date.now()}`, active: true }] })),
   updateClient: (c) => set((s) => ({ clients: s.clients.map((x) => (x.id === c.id ? c : x)) })),
   addBon: (b) => {
@@ -278,4 +358,20 @@ export const useData = create<DataState>((set) => ({
     return id;
   },
   updateBonStatus: (id, status) => set((s) => ({ bons: s.bons.map((b) => (b.id === id ? { ...b, status } : b)) })),
+  addNotification: (n) =>
+    set((s) => ({
+      notifications: [{ ...n, id: `notif-${Date.now()}`, read: false }, ...s.notifications],
+    })),
+  markNotificationRead: (id) =>
+    set((s) => ({
+      notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    })),
+  markAllNotificationsRead: (role) =>
+    set((s) => ({
+      notifications: s.notifications.map((n) =>
+        n.recipientRole === role ? { ...n, read: true } : n,
+      ),
+    })),
+  addIncident: (i) =>
+    set((s) => ({ incidents: [{ ...i, id: `inc-${Date.now()}` }, ...s.incidents] })),
 }));

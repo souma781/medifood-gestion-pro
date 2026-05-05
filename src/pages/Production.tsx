@@ -24,8 +24,8 @@ const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--info))",
 function RegisterForm() {
   const { products, operators, addProduction } = useData();
   const user = useAuth((s) => s.user);
-  const lockedProduct = user?.role === "Responsable Production"
-    ? products.find((p) => p.name === user.assignedProduct)
+  const lockedProduct = user?.role === "Responsable Production" && user.assignedProducts?.length === 1
+    ? products.find((p) => p.name === user.assignedProducts![0])
     : null;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [productId, setProductId] = useState(lockedProduct?.id ?? products[0].id);
@@ -112,15 +112,15 @@ function RegisterForm() {
 function HistoryTable() {
   const { production, products, deleteProduction } = useData();
   const user = useAuth((s) => s.user);
-  const assignedId = user?.role === "Responsable Production"
-    ? products.find((p) => p.name === user.assignedProduct)?.id
+  const assignedIds = user?.role === "Responsable Production" && user.assignedProducts?.length
+    ? products.filter((p) => user.assignedProducts!.includes(p.name)).map((p) => p.id)
     : undefined;
   const [search, setSearch] = useState("");
-  const [productFilter, setProductFilter] = useState(assignedId ?? "all");
+  const [productFilter, setProductFilter] = useState(assignedIds?.[0] ?? "all");
   const [viewing, setViewing] = useState<string | null>(null);
 
   const filtered = production.filter((p) => {
-    if (assignedId && p.productId !== assignedId) return false;
+    if (assignedIds?.length && !assignedIds.includes(p.productId)) return false;
     if (productFilter !== "all" && p.productId !== productFilter) return false;
     if (search && !p.lot.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -231,8 +231,8 @@ function HistoryTable() {
 function Stats() {
   const { production: allProd, products: allProducts } = useData();
   const user = useAuth((s) => s.user);
-  const products = user?.role === "Responsable Production"
-    ? allProducts.filter((p) => p.name === user.assignedProduct)
+  const products = user?.role === "Responsable Production" && user.assignedProducts?.length
+    ? allProducts.filter((p) => user.assignedProducts!.includes(p.name))
     : allProducts;
   const productIds = new Set(products.map((p) => p.id));
   const production = user?.role === "Responsable Production"
@@ -298,15 +298,15 @@ export default function Production() {
   return (
     <div>
       <PageHeader title="Production" description="Suivi et enregistrement de la production journalière" />
-      {isProdRole && user?.assignedProduct && (
+      {isProdRole && user?.assignedProducts?.length ? (
         <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
           <Info className="h-5 w-5 text-primary shrink-0" />
           <div className="text-sm">
             <span className="text-muted-foreground">Vous gérez la production : </span>
-            <span className="font-semibold text-primary">{user.assignedProduct}</span>
+            <span className="font-semibold text-primary">{user.assignedProducts.join(", ")}</span>
           </div>
         </div>
-      )}
+      ) : null}
       <Tabs defaultValue="register">
         <TabsList>
           <TabsTrigger value="register">Enregistrer</TabsTrigger>
