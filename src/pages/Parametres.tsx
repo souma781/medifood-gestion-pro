@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { useData } from "@/store/data";
+import { useAuth } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { formatKg } from "@/lib/format";
 
@@ -20,6 +21,8 @@ const mockUsers = [
 
 export default function Parametres() {
   const { products } = useData();
+  const role = useAuth((s) => s.user?.role);
+  const isAdmin = role === "Admin";
   const [users, setUsers] = useState(mockUsers);
   const [notifs, setNotifs] = useState({ stock: true, order: true, late: true, daily: false });
 
@@ -29,9 +32,9 @@ export default function Parametres() {
       <Tabs defaultValue="profil">
         <TabsList>
           <TabsTrigger value="profil">Profil</TabsTrigger>
-          <TabsTrigger value="entreprise">Entreprise</TabsTrigger>
-          <TabsTrigger value="users">Utilisateurs</TabsTrigger>
-          <TabsTrigger value="produits">Produits</TabsTrigger>
+          {isAdmin && <TabsTrigger value="entreprise">Entreprise</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="users">Utilisateurs</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="produits">Produits</TabsTrigger>}
           <TabsTrigger value="notifs">Notifications</TabsTrigger>
         </TabsList>
 

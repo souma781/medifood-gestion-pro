@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { useAuth } from "@/store/auth";
+import { useAuth, MOCK_USERS } from "@/store/auth";
+import { ROLE_BADGE, ROLE_SHORT } from "@/lib/rbac";
 import { Logo } from "@/components/medifood/Logo";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function Login() {
   const [email, setEmail] = useState("admin@medifood.tn");
-  const [password, setPassword] = useState("admin");
+  const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
   const login = useAuth((s) => s.login);
   const navigate = useNavigate();
@@ -19,9 +22,19 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setTimeout(() => {
-      login(email);
+      const r = login(email, password);
+      setLoading(false);
+      if (r.ok === false) {
+        toast.error(r.error);
+        return;
+      }
       navigate("/dashboard");
-    }, 700);
+    }, 500);
+  };
+
+  const fill = (u: typeof MOCK_USERS[number]) => {
+    setEmail(u.email);
+    setPassword(u.password);
   };
 
   return (
@@ -37,7 +50,7 @@ export default function Login() {
             <div className="mb-6 text-center">
               <h1 className="text-2xl font-bold text-foreground">Connexion</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Plateforme de gestion MEDIFOOD Tunisie
+                Plateforme de gestion EL MADINA
               </p>
             </div>
             <form onSubmit={onSubmit} className="space-y-4">
@@ -54,13 +67,34 @@ export default function Login() {
                 Se connecter
               </Button>
             </form>
-            <p className="mt-6 text-center text-xs text-muted-foreground">
-              Démo — n'importe quels identifiants fonctionnent
-            </p>
+
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Comptes de démonstration
+              </p>
+              <div className="space-y-1.5">
+                {MOCK_USERS.map((u) => (
+                  <button
+                    key={u.email}
+                    type="button"
+                    onClick={() => fill(u)}
+                    className="w-full flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-left text-xs hover:bg-muted transition"
+                  >
+                    <div>
+                      <div className="font-medium text-foreground">{u.name}</div>
+                      <div className="text-muted-foreground">{u.email}</div>
+                    </div>
+                    <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium", ROLE_BADGE[u.role])}>
+                      {ROLE_SHORT[u.role]}{u.assignedProduct ? ` · ${u.assignedProduct}` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
         <p className="mt-6 text-center text-xs text-primary-foreground/70">
-          © 2026 MEDIFOOD Tunisie · Sfax
+          © 2026 EL MADINA · Sfax
         </p>
       </div>
     </div>

@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Download, Eye, Trash2 } from "lucide-react";
+import { Download, Eye, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/store/data";
+import { useAuth } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { formatDate, formatKg } from "@/lib/format";
 import {
@@ -22,8 +23,12 @@ const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--info))",
 
 function RegisterForm() {
   const { products, operators, addProduction } = useData();
+  const user = useAuth((s) => s.user);
+  const lockedProduct = user?.role === "Responsable Production"
+    ? products.find((p) => p.name === user.assignedProduct)
+    : null;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [productId, setProductId] = useState(products[0].id);
+  const [productId, setProductId] = useState(lockedProduct?.id ?? products[0].id);
   const [produced, setProduced] = useState("");
   const [packaged, setPackaged] = useState("");
   const [lot, setLot] = useState("");
@@ -59,12 +64,16 @@ function RegisterForm() {
           </div>
           <div className="space-y-1.5">
             <Label>Produit</Label>
-            <Select value={productId} onValueChange={setProductId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            {lockedProduct ? (
+              <Input value={lockedProduct.name} readOnly disabled />
+            ) : (
+              <Select value={productId} onValueChange={setProductId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Quantité produite (kg)</Label>
@@ -102,11 +111,16 @@ function RegisterForm() {
 
 function HistoryTable() {
   const { production, products, deleteProduction } = useData();
+  const user = useAuth((s) => s.user);
+  const assignedId = user?.role === "Responsable Production"
+    ? products.find((p) => p.name === user.assignedProduct)?.id
+    : undefined;
   const [search, setSearch] = useState("");
-  const [productFilter, setProductFilter] = useState("all");
+  const [productFilter, setProductFilter] = useState(assignedId ?? "all");
   const [viewing, setViewing] = useState<string | null>(null);
 
   const filtered = production.filter((p) => {
+    if (assignedId && p.productId !== assignedId) return false;
     if (productFilter !== "all" && p.productId !== productFilter) return false;
     if (search && !p.lot.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -135,13 +149,15 @@ function HistoryTable() {
       <CardContent>
         <div className="mb-4 flex flex-wrap gap-2">
           <Input placeholder="Rechercher par lot..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-          <Select value={productFilter} onValueChange={setProductFilter}>
-            <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous les produits</SelectItem>
-              {products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}
-            </SelectContent>
-          </Select>
+          {!assignedId && (
+            <Select value={productFilter} onValueChange={setProductFilter}>
+              <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les produits</SelectItem>
+                {products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         {filtered.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">Aucun résultat</div>
@@ -213,7 +229,15 @@ function HistoryTable() {
 }
 
 function Stats() {
-  const { production, products } = useData();
+  const { production: allProd, products: allProducts } = useData();
+  const user = useAuth((s) => s.user);
+  const products = user?.role === "Responsable Production"
+    ? allProducts.filter((p) => p.name === user.assignedProduct)
+    : allProducts;
+  const productIds = new Set(products.map((p) => p.id));
+  const production = user?.role === "Responsable Production"
+    ? allProd.filter((p) => productIds.has(p.productId))
+    : allProd;
   const lineData = useMemo(() => {
     const days: any[] = [];
     for (let i = 13; i >= 0; i--) {
@@ -269,9 +293,20 @@ function Stats() {
 }
 
 export default function Production() {
+  const user = useAuth((s) => s.user);
+  const isProdRole = user?.role === "Responsable Production";
   return (
     <div>
       <PageHeader title="Production" description="Suivi et enregistrement de la production journalière" />
+      {isProdRole && user?.assignedProduct && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <Info className="h-5 w-5 text-primary shrink-0" />
+          <div className="text-sm">
+            <span className="text-muted-foreground">Vous gérez la production : </span>
+            <span className="font-semibold text-primary">{user.assignedProduct}</span>
+          </div>
+        </div>
+      )}
       <Tabs defaultValue="register">
         <TabsList>
           <TabsTrigger value="register">Enregistrer</TabsTrigger>
