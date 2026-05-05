@@ -47,7 +47,7 @@ function ClientForm({ client, onSave, onClose }: { client?: Client; onSave: (c: 
 }
 
 export default function Clients() {
-  const { clients, orders, invoices, addClient, updateClient } = useData();
+  const { clients, orders, addClient, updateClient } = useData();
   const [search, setSearch] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
@@ -59,7 +59,7 @@ export default function Clients() {
 
   const stats = (id: string) => {
     const ords = orders.filter((o) => o.clientId === id);
-    const ca = invoices.filter((i) => i.clientId === id).reduce((s, inv) => s + inv.items.reduce((a, it) => a + it.quantity * it.unitPrice * 1.19, 0), 0);
+    const ca = ords.reduce((s, o) => s + o.items.reduce((a, it) => a + it.quantity * it.unitPrice, 0), 0);
     return { count: ords.length, ca };
   };
 
@@ -125,13 +125,12 @@ export default function Clients() {
 
 export function ClientProfile() {
   const { id } = useParams();
-  const { clients, orders, invoices } = useData();
+  const { clients, orders } = useData();
   const navigate = useNavigate();
   const c = clients.find((x) => x.id === id);
   if (!c) return <div className="p-6">Client introuvable</div>;
   const cOrders = orders.filter((o) => o.clientId === c.id);
-  const cInvoices = invoices.filter((i) => i.clientId === c.id);
-  const ca = cInvoices.reduce((s, inv) => s + inv.items.reduce((a, it) => a + it.quantity * it.unitPrice * 1.19, 0), 0);
+  const ca = cOrders.reduce((s, o) => s + o.items.reduce((a, it) => a + it.quantity * it.unitPrice, 0), 0);
 
   return (
     <div>

@@ -66,16 +66,24 @@ export type Order = {
   notes?: string;
 };
 
-export type InvoiceStatus = "Brouillon" | "Émise" | "Payée" | "En retard";
+export type BonStatus = "Brouillon" | "Émis" | "Livré";
 
-export type Invoice = {
+export type BonItem = {
+  designation: string;
+  quantity: number;
+  conditionnement: string;
+  observations?: string;
+};
+
+export type BonLivraison = {
   id: string;
   number: string;
   clientId: string;
+  orderId?: string;
   date: string;
-  dueDate: string;
-  items: { description: string; quantity: number; unitPrice: number }[];
-  status: InvoiceStatus;
+  deliveryDate: string;
+  items: BonItem[];
+  status: BonStatus;
   notes?: string;
 };
 
@@ -156,24 +164,30 @@ function genOrders(): Order[] {
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
-function genInvoices(): Invoice[] {
-  const statuses: InvoiceStatus[] = ["Payée", "Payée", "Émise", "En retard", "Brouillon", "Payée", "Émise", "En retard", "Payée", "Émise"];
-  const out: Invoice[] = [];
-  for (let i = 0; i < 10; i++) {
+function genBons(): BonLivraison[] {
+  const statuses: BonStatus[] = ["Livré", "Livré", "Émis", "Brouillon", "Livré", "Émis", "Livré", "Émis"];
+  const conditionnements = ["Sac 25 kg", "Carton 10 kg", "Sachet 5 kg", "Vrac"];
+  const out: BonLivraison[] = [];
+  for (let i = 0; i < 8; i++) {
     const date = new Date();
-    date.setDate(date.getDate() - rand(5, 60));
-    const due = new Date(date); due.setDate(due.getDate() + 30);
+    date.setDate(date.getDate() - rand(0, 45));
+    const delivery = new Date(date); delivery.setDate(delivery.getDate() + rand(1, 5));
     const itemCount = rand(2, 4);
-    const items = Array.from({ length: itemCount }, () => {
+    const items: BonItem[] = Array.from({ length: itemCount }, () => {
       const p = pick(products);
-      return { description: p.name, quantity: rand(20, 150), unitPrice: rand(15, 60) };
+      return {
+        designation: p.name,
+        quantity: rand(25, 250),
+        conditionnement: pick(conditionnements),
+        observations: "",
+      };
     });
     out.push({
-      id: `f${i + 1}`,
-      number: `FAC-${2026}-${String(i + 1).padStart(4, "0")}`,
+      id: `bl${i + 1}`,
+      number: `BL-2026-${String(i + 1).padStart(4, "0")}`,
       clientId: pick(clients).id,
       date: date.toISOString(),
-      dueDate: due.toISOString(),
+      deliveryDate: delivery.toISOString(),
       items,
       status: statuses[i],
     });
@@ -205,7 +219,7 @@ type DataState = {
   operators: Operator[];
   production: ProductionEntry[];
   orders: Order[];
-  invoices: Invoice[];
+  bons: BonLivraison[];
   movements: StockMovement[];
 
   addProduction: (e: Omit<ProductionEntry, "id">) => void;
@@ -215,8 +229,8 @@ type DataState = {
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   addClient: (c: Omit<Client, "id" | "active">) => void;
   updateClient: (c: Client) => void;
-  addInvoice: (i: Omit<Invoice, "id" | "number">) => void;
-  updateInvoiceStatus: (id: string, status: InvoiceStatus) => void;
+  addBon: (b: Omit<BonLivraison, "id" | "number">) => string;
+  updateBonStatus: (id: string, status: BonStatus) => void;
 };
 
 export const useData = create<DataState>((set) => ({
@@ -225,7 +239,7 @@ export const useData = create<DataState>((set) => ({
   operators,
   production: genProduction(),
   orders: genOrders(),
-  invoices: genInvoices(),
+  bons: genBons(),
   movements: genMovements(),
 
   addProduction: (e) =>
@@ -253,12 +267,15 @@ export const useData = create<DataState>((set) => ({
   updateOrderStatus: (id, status) => set((s) => ({ orders: s.orders.map((o) => (o.id === id ? { ...o, status } : o)) })),
   addClient: (c) => set((s) => ({ clients: [...s.clients, { ...c, id: `c-${Date.now()}`, active: true }] })),
   updateClient: (c) => set((s) => ({ clients: s.clients.map((x) => (x.id === c.id ? c : x)) })),
-  addInvoice: (i) =>
+  addBon: (b) => {
+    const id = `bl-${Date.now()}`;
     set((s) => ({
-      invoices: [
-        { ...i, id: `f-${Date.now()}`, number: `FAC-2026-${String(s.invoices.length + 1).padStart(4, "0")}` },
-        ...s.invoices,
+      bons: [
+        { ...b, id, number: `BL-2026-${String(s.bons.length + 1).padStart(4, "0")}` },
+        ...s.bons,
       ],
-    })),
-  updateInvoiceStatus: (id, status) => set((s) => ({ invoices: s.invoices.map((i) => (i.id === id ? { ...i, status } : i)) })),
+    }));
+    return id;
+  },
+  updateBonStatus: (id, status) => set((s) => ({ bons: s.bons.map((b) => (b.id === id ? { ...b, status } : b)) })),
 }));
