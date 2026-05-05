@@ -49,7 +49,7 @@ function KpiCard({ icon: Icon, label, value, trend, accent }: any) {
 }
 
 export default function Dashboard() {
-  const { production, products, orders, invoices } = useData();
+  const { production, products, orders } = useData();
 
   const today = new Date();
   const todayKey = today.toDateString();
@@ -59,9 +59,9 @@ export default function Dashboard() {
   const yProd = production.filter((p) => new Date(p.date).toDateString() === yesterdayKey).reduce((s, p) => s + p.produced, 0);
   const totalStock = products.reduce((s, p) => s + p.currentStock, 0);
   const pending = orders.filter((o) => o.status === "En attente" || o.status === "Confirmée").length;
-  const monthRevenue = invoices
-    .filter((i) => i.status === "Payée" && new Date(i.date).getMonth() === today.getMonth())
-    .reduce((s, i) => s + i.items.reduce((a, it) => a + it.quantity * it.unitPrice * 1.19, 0), 0);
+  const monthRevenue = orders
+    .filter((o) => o.status === "Livrée" && new Date(o.date).getMonth() === today.getMonth())
+    .reduce((s, o) => s + o.items.reduce((a, it) => a + it.quantity * it.unitPrice, 0), 0);
 
   // Daily production line chart for last 30 days, by category
   const lineData = useMemo(() => {
