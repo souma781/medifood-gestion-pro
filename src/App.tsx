@@ -5,7 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "./pages/NotFound.tsx";
 import Login from "./pages/Login";
+import Unauthorized from "./pages/Unauthorized";
 import AppLayout from "./layout/AppLayout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Production from "./pages/Production";
 import Inventaire from "./pages/Inventaire";
@@ -25,15 +27,18 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/unauthorized" element={<Unauthorized />} />
           <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/production" element={<Production />} />
-            <Route path="/inventaire" element={<Inventaire />} />
-            <Route path="/commandes" element={<Commandes />} />
-            <Route path="/bons-de-livraison" element={<BonsLivraison />} />
-            <Route path="/clients" element={<ClientsPage />} />
-            <Route path="/clients/:id" element={<ClientProfile />} />
-            <Route path="/parametres" element={<Parametres />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/production" element={<Production />} />
+              <Route path="/inventaire" element={<Inventaire />} />
+              <Route path="/commandes" element={<Commandes />} />
+              <Route path="/bons-de-livraison" element={<BonsLivraison />} />
+              <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/clients/:id" element={<ClientProfile />} />
+              <Route path="/parametres" element={<Parametres />} />
+            </Route>
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
