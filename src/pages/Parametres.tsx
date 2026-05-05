@@ -113,7 +113,7 @@ export default function Parametres() {
               {[
                 { k: "stock", label: "Stock bas" },
                 { k: "order", label: "Nouvelle commande" },
-                { k: "late", label: "Facture en retard" },
+                { k: "late", label: "Bon de livraison émis" },
                 { k: "daily", label: "Rapport journalier" },
               ].map((n) => (
                 <div key={n.k} className="flex items-center justify-between rounded-lg border border-border p-3">
