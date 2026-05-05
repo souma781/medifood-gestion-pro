@@ -24,7 +24,7 @@ export default function Login() {
     setTimeout(() => {
       const r = login(email, password);
       setLoading(false);
-      if (!r.ok) {
+      if (r.ok === false) {
         toast.error(r.error);
         return;
       }
