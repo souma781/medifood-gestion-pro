@@ -24,7 +24,10 @@ export default function Login() {
     setTimeout(() => {
       const r = login(email, password);
       setLoading(false);
-      if (!r.ok) return toast.error(r.error);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
       navigate("/dashboard");
     }, 500);
   };
