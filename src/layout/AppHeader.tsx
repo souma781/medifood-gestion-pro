@@ -1,4 +1,5 @@
 import { Bell, CheckCheck } from "lucide-react";
+import { useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,8 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/store/auth";
-import { useData } from "@/store/data";
+import { useData, AppNotification } from "@/store/data";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const titles: Record<string, string> = {
@@ -43,12 +45,24 @@ function formatRelativeTime(dateStr: string): string {
   return `Il y a ${Math.floor(hours / 24)}j`;
 }
 
+function mapNotification(n: any): AppNotification {
+  return {
+    id: String(n.id),
+    date: n.date,
+    type: n.type,
+    message: n.message,
+    orderId: n.order_id ? String(n.order_id) : undefined,
+    read: !!n.read,
+    recipientRole: n.recipient_role as AppNotification["recipientRole"],
+  };
+}
+
 export function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
   const user = useAuth((s) => s.user);
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
+  const { notifications, setNotifications, markNotificationRead, markAllNotificationsRead } = useData();
 
   const matched = Object.keys(titles).find((k) => location.pathname.startsWith(k));
   const title = matched ? titles[matched] : "MEDIFOOD";
@@ -59,6 +73,35 @@ export function AppHeader() {
       : user?.role === "Responsable Commercial"
       ? "Responsable Commercial"
       : null;
+
+  useEffect(() => {
+    if (!recipientRole) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const data = await api.notifications.getAll();
+        if (!cancelled) setNotifications((data as any[]).map(mapNotification));
+      } catch {
+        // silently ignore — keep existing state
+      }
+    };
+
+    load();
+    const timer = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [recipientRole]);
+
+  const handleMarkRead = useCallback(async (id: string) => {
+    markNotificationRead(id);
+    try { await api.notifications.markRead(id); } catch {}
+  }, [markNotificationRead]);
+
+  const handleMarkAllRead = useCallback(async () => {
+    if (!recipientRole) return;
+    markAllNotificationsRead(recipientRole);
+    try { await api.notifications.markAllRead(); } catch {}
+  }, [markAllNotificationsRead, recipientRole]);
 
   const myNotifications = notifications.filter(
     (n) => n.recipientRole === recipientRole || user?.role === "Admin",
@@ -93,7 +136,7 @@ export function AppHeader() {
                   variant="ghost"
                   size="sm"
                   className="h-6 gap-1 px-2 text-xs text-muted-foreground"
-                  onClick={() => markAllNotificationsRead(recipientRole)}
+                  onClick={handleMarkAllRead}
                 >
                   <CheckCheck className="h-3 w-3" />
                   Tout marquer lu
@@ -109,7 +152,7 @@ export function AppHeader() {
                 <DropdownMenuItem
                   key={n.id}
                   className={cn("flex flex-col items-start gap-0.5 p-3 cursor-pointer", !n.read && "bg-accent/20")}
-                  onClick={() => markNotificationRead(n.id)}
+                  onClick={() => handleMarkRead(n.id)}
                 >
                   <div className="flex w-full items-start gap-2">
                     <span className="mt-0.5 text-sm">{NOTIF_ICONS[n.type]}</span>

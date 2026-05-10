@@ -333,6 +333,7 @@ type DataState = {
   updateClient: (c: Client) => void;
   addBon: (b: Omit<BonLivraison, "id" | "number"> & { number?: string }) => string;
   updateBonStatus: (id: string, status: BonStatus) => void;
+  setNotifications: (notifs: AppNotification[]) => void;
   addNotification: (n: Omit<AppNotification, "id" | "read">) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (role: "Responsable Commercial" | "Admin") => void;
@@ -396,6 +397,7 @@ export const useData = create<DataState>((set) => ({
     return id;
   },
   updateBonStatus: (id, status) => set((s) => ({ bons: s.bons.map((b) => (b.id === id ? { ...b, status } : b)) })),
+  setNotifications: (notifs) => set({ notifications: notifs }),
   addNotification: (n) =>
     set((s) => ({
       notifications: [{ ...n, id: `notif-${Date.now()}`, read: false }, ...s.notifications],
