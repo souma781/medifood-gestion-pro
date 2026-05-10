@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,47 +8,65 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, Eye, Trash2, Info } from "lucide-react";
 import { toast } from "sonner";
-import { useData } from "@/store/data";
 import { useAuth } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { formatDate, formatKg } from "@/lib/format";
+import { api } from "@/lib/api";
+import type { Product, ProductionEntry } from "@/store/data";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, BarChart, Bar,
 } from "recharts";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--info))", "hsl(var(--success))", "#A855F7", "#EC4899"];
 
-function RegisterForm() {
-  const { products, operators, addProduction } = useData();
+const OPERATORS = ["Karim Bouzid", "Sami Hamdi", "Nadia Trabelsi", "Mohamed Ali"];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+type RegisterFormProps = {
+  products: Product[];
+  operators: string[];
+  onAdd: (e: Omit<ProductionEntry, "id">) => Promise<void>;
+};
+
+function RegisterForm({ products, operators, onAdd }: RegisterFormProps) {
   const user = useAuth((s) => s.user);
   const lockedProduct = user?.role === "Responsable Production" && user.assignedProducts?.length === 1
     ? products.find((p) => p.name === user.assignedProducts![0])
     : null;
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [productId, setProductId] = useState(lockedProduct?.id ?? products[0].id);
+  const [productId, setProductId] = useState(lockedProduct?.id ?? products[0]?.id ?? "");
   const [produced, setProduced] = useState("");
   const [packaged, setPackaged] = useState("");
   const [lot, setLot] = useState("");
-  const [operator, setOperator] = useState(operators[0]);
+  const [operator, setOperator] = useState(operators[0] ?? "");
   const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!produced || !packaged || !lot) return toast.error("Veuillez remplir tous les champs requis");
-    addProduction({
-      date: new Date(date).toISOString(),
-      productId,
-      produced: parseFloat(produced),
-      packaged: parseFloat(packaged),
-      lot,
-      operator,
-      notes,
-    });
-    toast.success("Production enregistrée avec succès");
-    setProduced(""); setPackaged(""); setLot(""); setNotes("");
+    setSubmitting(true);
+    try {
+      await onAdd({
+        date: new Date(date).toISOString(),
+        productId,
+        produced: parseFloat(produced),
+        packaged: parseFloat(packaged),
+        lot,
+        operator,
+        notes,
+      });
+      toast.success("Production enregistrée avec succès");
+      setProduced(""); setPackaged(""); setLot(""); setNotes("");
+    } catch {
+      toast.error("Erreur lors de l'enregistrement");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -101,7 +119,9 @@ function RegisterForm() {
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
           <div className="md:col-span-2">
-            <Button type="submit" className="w-full md:w-auto">Enregistrer la production</Button>
+            <Button type="submit" disabled={submitting} className="w-full md:w-auto">
+              {submitting ? "Enregistrement..." : "Enregistrer la production"}
+            </Button>
           </div>
         </form>
       </CardContent>
@@ -109,8 +129,13 @@ function RegisterForm() {
   );
 }
 
-function HistoryTable() {
-  const { production, products, deleteProduction } = useData();
+type HistoryTableProps = {
+  production: ProductionEntry[];
+  products: Product[];
+  onDelete: (id: string) => Promise<void>;
+};
+
+function HistoryTable({ production, products, onDelete }: HistoryTableProps) {
   const user = useAuth((s) => s.user);
   const assignedIds = user?.role === "Responsable Production" && user.assignedProducts?.length
     ? products.filter((p) => user.assignedProducts!.includes(p.name)).map((p) => p.id)
@@ -149,7 +174,7 @@ function HistoryTable() {
       <CardContent>
         <div className="mb-4 flex flex-wrap gap-2">
           <Input placeholder="Rechercher par lot..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-          {!assignedId && (
+          {!assignedIds?.length && (
             <Select value={productFilter} onValueChange={setProductFilter}>
               <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -196,7 +221,14 @@ function HistoryTable() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => { deleteProduction(p.id); toast.success("Entrée supprimée"); }}>Supprimer</AlertDialogAction>
+                          <AlertDialogAction onClick={async () => {
+                            try {
+                              await onDelete(p.id);
+                              toast.success("Entrée supprimée");
+                            } catch {
+                              toast.error("Erreur lors de la suppression");
+                            }
+                          }}>Supprimer</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -228,8 +260,12 @@ function HistoryTable() {
   );
 }
 
-function Stats() {
-  const { production: allProd, products: allProducts } = useData();
+type StatsProps = {
+  production: ProductionEntry[];
+  products: Product[];
+};
+
+function Stats({ production: allProd, products: allProducts }: StatsProps) {
   const user = useAuth((s) => s.user);
   const products = user?.role === "Responsable Production" && user.assignedProducts?.length
     ? allProducts.filter((p) => user.assignedProducts!.includes(p.name))
@@ -238,6 +274,7 @@ function Stats() {
   const production = user?.role === "Responsable Production"
     ? allProd.filter((p) => productIds.has(p.productId))
     : allProd;
+
   const lineData = useMemo(() => {
     const days: any[] = [];
     for (let i = 13; i >= 0; i--) {
@@ -292,9 +329,48 @@ function Stats() {
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function Production() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [production, setProduction] = useState<ProductionEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const user = useAuth((s) => s.user);
   const isProdRole = user?.role === "Responsable Production";
+
+  const reload = () => {
+    Promise.all([api.products.getAll(), api.production.getAll()])
+      .then(([prods, prod]) => {
+        setProducts(prods as Product[]);
+        setProduction(prod as ProductionEntry[]);
+      })
+      .catch(() => toast.error("Erreur lors du chargement des données"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const handleAddProduction = async (e: Omit<ProductionEntry, "id">) => {
+    await api.production.create(e);
+    reload();
+  };
+
+  const handleDeleteProduction = async (id: string) => {
+    await api.production.delete(id);
+    reload();
+  };
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="Production" description="Suivi et enregistrement de la production journalière" />
+        <div className="flex items-center justify-center py-20">
+          <p className="text-muted-foreground animate-pulse">Chargement des données...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader title="Production" description="Suivi et enregistrement de la production journalière" />
@@ -313,9 +389,15 @@ export default function Production() {
           <TabsTrigger value="history">Historique</TabsTrigger>
           <TabsTrigger value="stats">Statistiques</TabsTrigger>
         </TabsList>
-        <TabsContent value="register" className="mt-4"><RegisterForm /></TabsContent>
-        <TabsContent value="history" className="mt-4"><HistoryTable /></TabsContent>
-        <TabsContent value="stats" className="mt-4"><Stats /></TabsContent>
+        <TabsContent value="register" className="mt-4">
+          <RegisterForm products={products} operators={OPERATORS} onAdd={handleAddProduction} />
+        </TabsContent>
+        <TabsContent value="history" className="mt-4">
+          <HistoryTable production={production} products={products} onDelete={handleDeleteProduction} />
+        </TabsContent>
+        <TabsContent value="stats" className="mt-4">
+          <Stats production={production} products={products} />
+        </TabsContent>
       </Tabs>
     </div>
   );

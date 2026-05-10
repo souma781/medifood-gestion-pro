@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,14 +9,21 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertTriangle, Package, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
-import { useData } from "@/store/data";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { StatusBadge } from "@/components/medifood/StatusBadge";
 import { formatDate, formatKg } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import type { Product, StockMovement } from "@/store/data";
 
-function StockCard({ product }: { product: any }) {
-  const { addMovement } = useData();
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+type StockCardProps = {
+  product: Product;
+  onAdjust: (m: Omit<StockMovement, "id">) => Promise<void>;
+};
+
+function StockCard({ product, onAdjust }: StockCardProps) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"Entrée" | "Sortie" | "Ajustement">("Entrée");
   const [qty, setQty] = useState("");
@@ -25,11 +32,15 @@ function StockCard({ product }: { product: any }) {
   const pct = Math.min(100, (product.currentStock / product.maxCapacity) * 100);
   const color = pct > 50 ? "bg-success" : pct > 20 ? "bg-warning" : "bg-destructive";
 
-  const submit = () => {
+  const submit = async () => {
     if (!qty) return toast.error("Quantité requise");
-    addMovement({ date: new Date().toISOString(), productId: product.id, type, quantity: parseFloat(qty), reason: reason || "—", user: "Admin" });
-    toast.success("Stock ajusté");
-    setOpen(false); setQty(""); setReason("");
+    try {
+      await onAdjust({ date: new Date().toISOString(), productId: product.id, type, quantity: parseFloat(qty), reason: reason || "—", user: "Admin" });
+      toast.success("Stock ajusté");
+      setOpen(false); setQty(""); setReason("");
+    } catch {
+      toast.error("Erreur lors de l'ajustement");
+    }
   };
 
   return (
@@ -88,8 +99,12 @@ function StockCard({ product }: { product: any }) {
   );
 }
 
-function Movements() {
-  const { movements, products } = useData();
+type MovementsProps = {
+  movements: StockMovement[];
+  products: Product[];
+};
+
+function Movements({ movements, products }: MovementsProps) {
   return (
     <Card className="card-soft border-0">
       <CardHeader><CardTitle>Mouvements de stock</CardTitle></CardHeader>
@@ -123,8 +138,11 @@ function Movements() {
   );
 }
 
-function Alerts() {
-  const { products } = useData();
+type AlertsProps = {
+  products: Product[];
+};
+
+function Alerts({ products }: AlertsProps) {
   const low = products.filter((p) => p.currentStock < p.minStock);
   return (
     <Card className="card-soft border-0">
@@ -160,8 +178,41 @@ function Alerts() {
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function Inventaire() {
-  const { products } = useData();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = () => {
+    Promise.all([api.products.getAll(), api.stock.getMovements()])
+      .then(([prods, movs]) => {
+        setProducts(prods as Product[]);
+        setMovements(movs as StockMovement[]);
+      })
+      .catch(() => toast.error("Erreur lors du chargement des données"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const handleAddMovement = async (m: Omit<StockMovement, "id">) => {
+    await api.stock.addMovement(m);
+    reload();
+  };
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="Inventaire" description="Gestion du stock et des mouvements" />
+        <div className="flex items-center justify-center py-20">
+          <p className="text-muted-foreground animate-pulse">Chargement des données...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader title="Inventaire" description="Gestion du stock et des mouvements" />
@@ -173,11 +224,15 @@ export default function Inventaire() {
         </TabsList>
         <TabsContent value="stock" className="mt-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {products.map((p) => (<StockCard key={p.id} product={p} />))}
+            {products.map((p) => (<StockCard key={p.id} product={p} onAdjust={handleAddMovement} />))}
           </div>
         </TabsContent>
-        <TabsContent value="moves" className="mt-4"><Movements /></TabsContent>
-        <TabsContent value="alerts" className="mt-4"><Alerts /></TabsContent>
+        <TabsContent value="moves" className="mt-4">
+          <Movements movements={movements} products={products} />
+        </TabsContent>
+        <TabsContent value="alerts" className="mt-4">
+          <Alerts products={products} />
+        </TabsContent>
       </Tabs>
     </div>
   );

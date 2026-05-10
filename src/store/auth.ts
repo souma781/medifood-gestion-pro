@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { api } from "@/lib/api";
 
 export type Role = "Admin" | "Responsable Commercial" | "Responsable Production";
 export type ProductionRole = "cuisson" | "emballage" | "mixte";
 
 export type AuthUser = {
+  id: string;
   email: string;
   name: string;
   role: Role;
@@ -15,21 +17,14 @@ export type AuthUser = {
 
 export type ManagedUser = AuthUser & { id: string; password: string };
 
-const INITIAL_USERS: ManagedUser[] = [
-  { id: "u1", email: "admin@medifood.tn", password: "admin123", role: "Admin", name: "Admin MEDIFOOD", active: true },
-  { id: "u2", email: "commercial@medifood.tn", password: "comm123", role: "Responsable Commercial", name: "Sarra Ben Ali", active: true },
-  { id: "u3", email: "prod.amandes@medifood.tn", password: "prod123", role: "Responsable Production", name: "Khalil Trabelsi", assignedProducts: ["Amandes"], productionRole: "mixte", active: true },
-  { id: "u4", email: "prod.pistaches@medifood.tn", password: "prod123", role: "Responsable Production", name: "Youssef Ghribi", assignedProducts: ["Pistaches"], productionRole: "mixte", active: true },
-  { id: "u5", email: "cuisson.amandes@medifood.tn", password: "prod123", role: "Responsable Production", name: "Ali Chaouachi", assignedProducts: ["Amandes"], productionRole: "cuisson", active: true },
-  { id: "u6", email: "emballage.amandes@medifood.tn", password: "prod123", role: "Responsable Production", name: "Rim Belhaj", assignedProducts: ["Amandes"], productionRole: "emballage", active: true },
-];
-
 type AuthState = {
   isAuthenticated: boolean;
   user: AuthUser | null;
+  token: string | null;
   users: ManagedUser[];
-  login: (email: string, password: string) => { ok: true } | { ok: false; error: string };
+  login: (email: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   logout: () => void;
+  updateProfile: (fields: Partial<Pick<AuthUser, "name" | "email">>) => void;
   addUser: (u: Omit<ManagedUser, "id">) => void;
   updateUser: (u: ManagedUser) => void;
   deleteUser: (id: string) => void;
@@ -37,20 +32,23 @@ type AuthState = {
 
 export const useAuth = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       isAuthenticated: false,
       user: null,
-      users: INITIAL_USERS,
-      login: (email, password) => {
-        const u = get().users.find(
-          (x) => x.email.toLowerCase() === email.toLowerCase() && x.password === password && x.active !== false,
-        );
-        if (!u) return { ok: false, error: "Identifiants invalides" };
-        const { password: _p, id: _id, ...user } = u;
-        set({ isAuthenticated: true, user });
-        return { ok: true };
+      token: null,                          // ✅ ajouter cette ligne
+      users: [],                            // ✅ vide — les users viennent du backend
+      login: async (email, password) => {
+        try {
+          const { token, user } = await api.auth.login(email, password);
+          set({ isAuthenticated: true, user: user as AuthUser, token });
+          return { ok: true };
+        } catch (err: any) {
+          return { ok: false, error: err.message || "Identifiants invalides" };
+        }
       },
-      logout: () => set({ isAuthenticated: false, user: null }),
+      logout: () => set({ isAuthenticated: false, user: null, token: null }),
+      updateProfile: (fields) =>
+        set((s) => ({ user: s.user ? { ...s.user, ...fields } : null })),
       addUser: (u) =>
         set((s) => ({ users: [...s.users, { ...u, id: `u-${Date.now()}` }] })),
       updateUser: (u) =>

@@ -40,6 +40,7 @@ export type StockMovement = {
 
 export type Client = {
   id: string;
+  clientNumber?: string;
   name: string;
   company: string;
   phone: string;
@@ -47,6 +48,7 @@ export type Client = {
   address: string;
   city: string;
   postalCode: string;
+  matriculeFiscale?: string;
   notes?: string;
   active: boolean;
 };
@@ -70,7 +72,7 @@ export type Order = {
   items: OrderItem[];
   status: OrderStatus;
   notes?: string;
-  partialQuantities?: Record<string, number>; // productId → qty en cours
+  partialQuantities?: Record<string, number>;
   refusalReason?: string;
 };
 
@@ -79,6 +81,8 @@ export type BonStatus = "Brouillon" | "Émis" | "Livré";
 export type BonItem = {
   designation: string;
   quantity: number;
+  unit: "Kg" | "1P";
+  unitPrice: number;
   conditionnement: string;
   observations?: string;
 };
@@ -93,6 +97,8 @@ export type BonLivraison = {
   items: BonItem[];
   status: BonStatus;
   notes?: string;
+  chauffeur?: string;
+  matriculeFiscale?: string;
 };
 
 export type NotificationType = "stock_insuffisant" | "panne_machine" | "commande_refusée" | "manque_ouvriers" | "autre";
@@ -133,14 +139,14 @@ const products: Product[] = [
 ];
 
 const clients: Client[] = [
-  { id: "c1", name: "Hichem Mansouri", company: "Carrefour Sfax", phone: "+216 74 123 456", email: "achats@carrefour-sfax.tn", address: "Avenue Habib Bourguiba", city: "Sfax", postalCode: "3000", active: true },
-  { id: "c2", name: "Leila Ben Salah", company: "Monoprix Tunis", phone: "+216 71 987 654", email: "l.bensalah@monoprix.tn", address: "Rue de Marseille", city: "Tunis", postalCode: "1000", active: true },
-  { id: "c3", name: "Anis Khelifi", company: "MG Distribution", phone: "+216 73 555 222", email: "anis@mg-dist.tn", address: "Zone Industrielle", city: "Sousse", postalCode: "4000", active: true },
-  { id: "c4", name: "Sonia Gharbi", company: "Géant Tunisia", phone: "+216 71 444 333", email: "s.gharbi@geant.tn", address: "Lac 2", city: "Tunis", postalCode: "1053", active: true },
-  { id: "c5", name: "Fares Jebali", company: "Délice Pâtisserie", phone: "+216 74 666 111", email: "contact@delice-patisserie.tn", address: "Rue Mongi Slim", city: "Sfax", postalCode: "3002", active: true },
-  { id: "c6", name: "Maher Boukadi", company: "Aziza Markets", phone: "+216 72 333 999", email: "achats@aziza.tn", address: "Avenue de la République", city: "Bizerte", postalCode: "7000", active: true },
-  { id: "c7", name: "Ines Lahmar", company: "Pâtisserie Royale", phone: "+216 75 222 444", email: "ines@royale.tn", address: "Rue 18 Janvier", city: "Gabès", postalCode: "6000", active: true },
-  { id: "c8", name: "Walid Cherif", company: "Magasin Général", phone: "+216 71 888 222", email: "w.cherif@mg.tn", address: "Charguia 1", city: "Tunis", postalCode: "2035", active: false },
+  { id: "c1", clientNumber: "0001", name: "Hichem Mansouri", company: "Carrefour Sfax", phone: "74 123 456", email: "achats@carrefour-sfax.tn", address: "Avenue Habib Bourguiba", city: "Sfax", postalCode: "3000", matriculeFiscale: "0123456A/A/M/000", active: true },
+  { id: "c2", clientNumber: "0002", name: "Leila Ben Salah", company: "Monoprix Tunis", phone: "71 987 654", email: "l.bensalah@monoprix.tn", address: "Rue de Marseille", city: "Tunis", postalCode: "1000", matriculeFiscale: "0234567B/A/M/000", active: true },
+  { id: "c3", clientNumber: "0003", name: "Anis Khelifi", company: "MG Distribution Sousse", phone: "73 555 222", email: "anis@mg-dist.tn", address: "Zone Industrielle", city: "Sousse", postalCode: "4000", matriculeFiscale: "0345678C/A/M/000", active: true },
+  { id: "c4", clientNumber: "0004", name: "Sonia Gharbi", company: "Géant Tunisia", phone: "71 444 333", email: "s.gharbi@geant.tn", address: "Lac 2, Berges du Lac", city: "Tunis", postalCode: "1053", matriculeFiscale: "0456789D/A/M/000", active: true },
+  { id: "c5", clientNumber: "0005", name: "Fares Jebali", company: "Délice Pâtisserie", phone: "74 666 111", email: "contact@delice-patisserie.tn", address: "Rue Mongi Slim", city: "Sfax", postalCode: "3002", active: true },
+  { id: "c6", clientNumber: "0006", name: "Maher Boukadi", company: "Aziza Supermarchés Monastir", phone: "73 333 999", email: "achats@aziza.tn", address: "Avenue de l'Environnement", city: "Monastir", postalCode: "5000", matriculeFiscale: "0567890E/A/M/000", active: true },
+  { id: "c7", clientNumber: "0007", name: "Ines Lahmar", company: "Marché Centrale Gabès", phone: "75 222 444", email: "ines@centrale-gabes.tn", address: "Rue 18 Janvier", city: "Gabès", postalCode: "6000", active: true },
+  { id: "c8", clientNumber: "0008", name: "Walid Cherif", company: "Magasin Général Tunis", phone: "71 888 222", email: "w.cherif@mg.tn", address: "Charguia 1", city: "Tunis", postalCode: "2035", matriculeFiscale: "0678901F/A/M/000", active: false },
 ];
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
@@ -198,32 +204,66 @@ function genOrders(): Order[] {
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
+type MediProduct = { name: string; unit: "Kg" | "1P"; prices: number[] };
+
+const mediProducts: MediProduct[] = [
+  { name: "Grains de tournesols blanc et noir grillés 700gr", unit: "1P", prices: [2.500, 2.750, 3.000, 3.250] },
+  { name: "Grain de tournesol noir et blanc grillées 3kg", unit: "Kg", prices: [8.000, 9.500, 10.000, 11.000] },
+  { name: "Pistache en coque grillées salées 1kg", unit: "Kg", prices: [22.000, 24.000, 25.000, 27.000] },
+  { name: "Cacahuète rouge grillé salé seau 1.8kg", unit: "1P", prices: [12.000, 13.500, 14.000, 15.000] },
+  { name: "Cacahuète blanc grillées salées 1kg", unit: "Kg", prices: [6.000, 7.000, 7.500, 8.500] },
+  { name: "Cacahuète chip nuts fromage sachet 800grs", unit: "1P", prices: [3.000, 3.500, 3.800, 4.000] },
+];
+
+const chauffeurs = [
+  "BOUBAKER MBAREK 7823 TU 222",
+  "SALAH HAMDI 4521 TN 133",
+  "RIDHA GHARBI 1092 SX 048",
+  "NOUREDDINE FEKI 2233 MS 077",
+];
+
 function genBons(): BonLivraison[] {
   const statuses: BonStatus[] = ["Livré", "Livré", "Émis", "Brouillon", "Livré", "Émis", "Livré", "Émis"];
-  const conditionnements = ["Sac 25 kg", "Carton 10 kg", "Sachet 5 kg", "Vrac"];
+  const clientIds = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"];
+
   const out: BonLivraison[] = [];
   for (let i = 0; i < 8; i++) {
     const date = new Date();
     date.setDate(date.getDate() - rand(0, 45));
-    const delivery = new Date(date); delivery.setDate(delivery.getDate() + rand(1, 5));
+    const delivery = new Date(date);
+    delivery.setDate(delivery.getDate() + rand(1, 5));
+
     const itemCount = rand(2, 4);
-    const items: BonItem[] = Array.from({ length: itemCount }, () => {
-      const p = pick(products);
-      return {
+    const usedIdx = new Set<number>();
+    const items: BonItem[] = [];
+    for (let k = 0; k < itemCount; k++) {
+      let pIdx: number;
+      do { pIdx = rand(0, mediProducts.length - 1); } while (usedIdx.has(pIdx));
+      usedIdx.add(pIdx);
+      const p = mediProducts[pIdx];
+      const qty = p.unit === "1P" ? rand(50, 300) : rand(20, 120);
+      const price = pick(p.prices);
+      items.push({
         designation: p.name,
-        quantity: rand(25, 250),
-        conditionnement: pick(conditionnements),
+        quantity: qty,
+        unit: p.unit,
+        unitPrice: price,
+        conditionnement: p.unit === "1P" ? "Carton" : "Sac 25 kg",
         observations: "",
-      };
-    });
+      });
+    }
+
+    const client = clients.find((c) => c.id === clientIds[i]);
     out.push({
       id: `bl${i + 1}`,
-      number: `BL-2026-${String(i + 1).padStart(4, "0")}`,
-      clientId: pick(clients).id,
+      number: `${String(i + 1).padStart(4, "0")} / 2026`,
+      clientId: clientIds[i],
       date: date.toISOString(),
       deliveryDate: delivery.toISOString(),
       items,
       status: statuses[i],
+      chauffeur: pick(chauffeurs),
+      matriculeFiscale: client?.matriculeFiscale,
     });
   }
   return out.sort((a, b) => b.date.localeCompare(a.date));
@@ -291,7 +331,7 @@ type DataState = {
   ) => void;
   addClient: (c: Omit<Client, "id" | "active">) => void;
   updateClient: (c: Client) => void;
-  addBon: (b: Omit<BonLivraison, "id" | "number">) => string;
+  addBon: (b: Omit<BonLivraison, "id" | "number"> & { number?: string }) => string;
   updateBonStatus: (id: string, status: BonStatus) => void;
   addNotification: (n: Omit<AppNotification, "id" | "read">) => void;
   markNotificationRead: (id: string) => void;
@@ -337,11 +377,11 @@ export const useData = create<DataState>((set) => ({
       orders: s.orders.map((o) =>
         o.id === id
           ? {
-              ...o,
-              status,
-              partialQuantities: partialQuantities ?? (status === "Terminé" ? undefined : o.partialQuantities),
-              refusalReason: refusalReason ?? o.refusalReason,
-            }
+            ...o,
+            status,
+            partialQuantities: partialQuantities ?? (status === "Terminé" ? undefined : o.partialQuantities),
+            refusalReason: refusalReason ?? o.refusalReason,
+          }
           : o,
       ),
     })),
@@ -349,12 +389,10 @@ export const useData = create<DataState>((set) => ({
   updateClient: (c) => set((s) => ({ clients: s.clients.map((x) => (x.id === c.id ? c : x)) })),
   addBon: (b) => {
     const id = `bl-${Date.now()}`;
-    set((s) => ({
-      bons: [
-        { ...b, id, number: `BL-2026-${String(s.bons.length + 1).padStart(4, "0")}` },
-        ...s.bons,
-      ],
-    }));
+    set((s) => {
+      const number = b.number || `${String(s.bons.length + 1).padStart(4, "0")} / ${new Date().getFullYear()}`;
+      return { bons: [{ ...b, id, number }, ...s.bons] };
+    });
     return id;
   },
   updateBonStatus: (id, status) => set((s) => ({ bons: s.bons.map((b) => (b.id === id ? { ...b, status } : b)) })),

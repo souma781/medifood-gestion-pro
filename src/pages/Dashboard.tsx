@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDown, ArrowUp, Factory, Package, ShoppingCart, Wallet } from "lucide-react";
 import {
@@ -16,12 +16,14 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { useData } from "@/store/data";
 import { useAuth } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { StatusBadge } from "@/components/medifood/StatusBadge";
 import { formatTND, formatKg, formatDate, formatNumber } from "@/lib/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+import type { Product, ProductionEntry, Order, Client } from "@/store/data";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--info))", "hsl(var(--success))", "#A855F7", "#EC4899"];
 
@@ -50,7 +52,29 @@ function KpiCard({ icon: Icon, label, value, trend, accent }: any) {
 }
 
 export default function Dashboard() {
-  const { production, products, orders } = useData();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [production, setProduction] = useState<ProductionEntry[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.products.getAll(),
+      api.production.getAll(),
+      api.orders.getAll(),
+      api.clients.getAll(),
+    ])
+      .then(([prods, prod, ords, cls]) => {
+        setProducts(prods as Product[]);
+        setProduction(prod as ProductionEntry[]);
+        setOrders(ords as Order[]);
+        setClients(cls as Client[]);
+      })
+      .catch(() => toast.error("Erreur lors du chargement des données"))
+      .finally(() => setLoading(false));
+  }, []);
+
   const user = useAuth((s) => s.user);
   const role = user?.role;
   const isCommercial = role === "Responsable Commercial";
@@ -72,7 +96,6 @@ export default function Dashboard() {
     .filter((o) => o.status === "Livrée" && new Date(o.date).getMonth() === today.getMonth())
     .reduce((s, o) => s + o.items.reduce((a, it) => a + it.quantity * it.unitPrice, 0), 0);
 
-  // Daily production line chart for last 30 days, by category
   const lineData = useMemo(() => {
     const days: any[] = [];
     const cats = ["Amandes", "Pistaches", "Cacahuètes nature", "Fruits enrobés chocolat"];
@@ -99,13 +122,22 @@ export default function Dashboard() {
   }, []);
 
   const stockDist = products.map((p) => ({ name: p.name, value: p.currentStock }));
-
   const recentProd = production.slice(0, 5);
   const recentOrders = orders.slice(0, 5);
-  const { clients } = useData();
 
   const trendUp = todayProd >= yProd;
   const trendVal = yProd === 0 ? "—" : `${Math.round(((todayProd - yProd) / yProd) * 100)}%`;
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="Tableau de bord" description="Vue d'ensemble de l'activité — MEDIFOOD Tunisie" />
+        <div className="flex items-center justify-center py-20">
+          <p className="text-muted-foreground animate-pulse">Chargement des données...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

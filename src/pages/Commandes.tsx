@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, createContext, useContext } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,14 +24,31 @@ import {
   FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useData, OrderStatus, Order } from "@/store/data";
-import { useAuth, ProductionRole } from "@/store/auth";
+import { type OrderStatus, type Order, type Incident } from "@/store/data";
+import { useAuth, type ProductionRole } from "@/store/auth";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { StatusBadge } from "@/components/medifood/StatusBadge";
 import { formatTND, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import type { Product, Client } from "@/store/data";
 
-// ─── Role helpers ────────────────────────────────────────────────────────────
+// ─── Page-level context ───────────────────────────────────────────────────────
+
+type CmdCtxValue = {
+  orders: Order[];
+  clients: Client[];
+  products: Product[];
+  updateOrderStatus: (id: string, status: OrderStatus, partialQty?: Record<string, number>, refusalReason?: string) => Promise<void>;
+  addOrder: (o: Omit<Order, "id" | "number">) => Promise<void>;
+  addIncident: (i: Omit<Incident, "id">) => Promise<void>;
+  reload: () => void;
+};
+
+const CmdCtx = createContext<CmdCtxValue>(null!);
+const useCmdCtx = () => useContext(CmdCtx);
+
+// ─── Role helpers ─────────────────────────────────────────────────────────────
 
 const ALL_PROD_STATUSES: OrderStatus[] = [
   "En attente", "En cuisson", "Cuit", "En emballage", "Terminé", "Refusé",
@@ -54,7 +71,7 @@ function getKanbanColumns(productionRole?: ProductionRole): OrderStatus[] {
   }
 }
 
-// ─── Status-change dialog ────────────────────────────────────────────────────
+// ─── Status-change dialog ─────────────────────────────────────────────────────
 
 type StatusDialogProps = {
   order: Order | null;
@@ -63,7 +80,7 @@ type StatusDialogProps = {
 };
 
 function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
-  const { updateOrderStatus, addNotification, products } = useData();
+  const { updateOrderStatus, products } = useCmdCtx();
   const user = useAuth((s) => s.user);
   const [newStatus, setNewStatus] = useState<OrderStatus | "">("");
   const [mode, setMode] = useState<"total" | "partiel">("total");
@@ -78,23 +95,16 @@ function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
     return prodName && user?.assignedProducts?.includes(prodName);
   });
 
-  const submit = () => {
+  const submit = async () => {
     if (!newStatus) return;
-    const partial = mode === "partiel" ? partialQty : undefined;
-    updateOrderStatus(order.id, newStatus, partial, newStatus === "Refusé" ? refusalReason : undefined);
-
-    if (newStatus === "Refusé") {
-      addNotification({
-        date: new Date().toISOString(),
-        type: "commande_refusée",
-        message: `Commande ${order.number} refusée par ${user?.name ?? "Production"}. Raison : ${refusalReason || "Non précisée"}`,
-        orderId: order.id,
-        recipientRole: "Responsable Commercial",
-      });
+    try {
+      const partial = mode === "partiel" ? partialQty : undefined;
+      await updateOrderStatus(order.id, newStatus, partial, newStatus === "Refusé" ? refusalReason : undefined);
+      toast.success(`Statut mis à jour : ${newStatus}`);
+      onClose();
+    } catch {
+      toast.error("Erreur lors de la mise à jour du statut");
     }
-
-    toast.success(`Statut mis à jour : ${newStatus}`);
-    onClose();
   };
 
   return (
@@ -120,20 +130,8 @@ function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
             <div className="space-y-1.5">
               <Label>Traitement</Label>
               <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant={mode === "total" ? "default" : "outline"}
-                  onClick={() => setMode("total")}
-                >
-                  En totalité
-                </Button>
-                <Button
-                  size="sm"
-                  variant={mode === "partiel" ? "default" : "outline"}
-                  onClick={() => setMode("partiel")}
-                >
-                  En partie
-                </Button>
+                <Button size="sm" variant={mode === "total" ? "default" : "outline"} onClick={() => setMode("total")}>En totalité</Button>
+                <Button size="sm" variant={mode === "partiel" ? "default" : "outline"} onClick={() => setMode("partiel")}>En partie</Button>
               </div>
               {mode === "partiel" && myProductItems.length > 0 && (
                 <div className="mt-2 space-y-2 rounded-lg border border-border p-3">
@@ -150,9 +148,7 @@ function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
                           placeholder="0"
                           max={it.quantity}
                           value={partialQty[it.productId] ?? ""}
-                          onChange={(e) =>
-                            setPartialQty({ ...partialQty, [it.productId]: parseFloat(e.target.value) || 0 })
-                          }
+                          onChange={(e) => setPartialQty({ ...partialQty, [it.productId]: parseFloat(e.target.value) || 0 })}
                         />
                       </div>
                     );
@@ -165,12 +161,7 @@ function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
           {newStatus === "Refusé" && (
             <div className="space-y-1.5">
               <Label>Motif du refus</Label>
-              <Textarea
-                rows={2}
-                placeholder="Expliquer la raison du refus..."
-                value={refusalReason}
-                onChange={(e) => setRefusalReason(e.target.value)}
-              />
+              <Textarea rows={2} placeholder="Expliquer la raison du refus..." value={refusalReason} onChange={(e) => setRefusalReason(e.target.value)} />
             </div>
           )}
         </div>
@@ -189,7 +180,7 @@ function StatusDialog({ order, productionRole, onClose }: StatusDialogProps) {
   );
 }
 
-// ─── Incident dialog ─────────────────────────────────────────────────────────
+// ─── Incident dialog ──────────────────────────────────────────────────────────
 
 type IncidentDialogProps = {
   order: Order | null;
@@ -206,41 +197,27 @@ const INCIDENT_OPTIONS: { value: IncidentKind; label: string; icon: React.ReactN
   { value: "autre", label: "Autre", icon: <FileText className="h-3.5 w-3.5" /> },
 ];
 
-const INCIDENT_NOTIF_LABELS: Record<IncidentKind, string> = {
-  panne_machine: "Panne machine",
-  stock_insuffisant: "Stock insuffisant",
-  manque_ouvriers: "Manque d'ouvriers",
-  autre: "Incident signalé",
-};
-
 function IncidentDialog({ order, open, onClose }: IncidentDialogProps) {
-  const { addIncident, addNotification, products } = useData();
+  const { addIncident, products } = useCmdCtx();
   const user = useAuth((s) => s.user);
   const [type, setType] = useState<IncidentKind>("panne_machine");
   const [description, setDescription] = useState("");
 
-  const submit = () => {
-    addIncident({
-      date: new Date().toISOString(),
-      type,
-      description,
-      orderId: order?.id,
-      reportedBy: user?.name ?? "Production",
-    });
-
-    const label = INCIDENT_NOTIF_LABELS[type];
-    const orderRef = order ? ` (commande ${order.number})` : "";
-    addNotification({
-      date: new Date().toISOString(),
-      type,
-      message: `${label} signalé${type === "stock_insuffisant" || type === "panne_machine" ? "e" : ""} par ${user?.name ?? "Production"}${orderRef} : ${description}`,
-      orderId: order?.id,
-      recipientRole: "Responsable Commercial",
-    });
-
-    toast.success("Incident signalé");
-    setDescription("");
-    onClose();
+  const submit = async () => {
+    try {
+      await addIncident({
+        date: new Date().toISOString(),
+        type,
+        description,
+        orderId: order?.id,
+        reportedBy: user?.name ?? "Production",
+      });
+      toast.success("Incident signalé");
+      setDescription("");
+      onClose();
+    } catch {
+      toast.error("Erreur lors du signalement");
+    }
   };
 
   const orderProductNames = order?.items
@@ -271,32 +248,20 @@ function IncidentDialog({ order, open, onClose }: IncidentDialogProps) {
             <Label>Type d'incident</Label>
             <div className="grid grid-cols-2 gap-2">
               {INCIDENT_OPTIONS.map((opt) => (
-                <Button
-                  key={opt.value}
-                  size="sm"
-                  variant={type === opt.value ? "default" : "outline"}
-                  onClick={() => setType(opt.value)}
-                  className="gap-1.5 justify-start"
-                >
-                  {opt.icon}
-                  {opt.label}
+                <Button key={opt.value} size="sm" variant={type === opt.value ? "default" : "outline"} onClick={() => setType(opt.value)} className="gap-1.5 justify-start">
+                  {opt.icon}{opt.label}
                 </Button>
               ))}
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>
-              {type === "autre" ? "Description du problème" : "Description"}
-            </Label>
+            <Label>{type === "autre" ? "Description du problème" : "Description"}</Label>
             <Textarea
               rows={3}
               placeholder={
-                type === "autre"
-                  ? "Décrivez le problème en détail..."
-                  : type === "manque_ouvriers"
-                  ? "Nombre d'ouvriers manquants, poste concerné..."
-                  : type === "panne_machine"
-                  ? "Machine concernée, nature de la panne..."
+                type === "autre" ? "Décrivez le problème en détail..."
+                  : type === "manque_ouvriers" ? "Nombre d'ouvriers manquants, poste concerné..."
+                  : type === "panne_machine" ? "Machine concernée, nature de la panne..."
                   : "Produit concerné, quantité manquante..."
               }
               value={description}
@@ -306,13 +271,8 @@ function IncidentDialog({ order, open, onClose }: IncidentDialogProps) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button
-            disabled={!description.trim()}
-            onClick={submit}
-            className="gap-1.5"
-          >
-            <AlertTriangle className="h-4 w-4" />
-            Signaler
+          <Button disabled={!description.trim()} onClick={submit} className="gap-1.5">
+            <AlertTriangle className="h-4 w-4" />Signaler
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -328,7 +288,7 @@ type OrderCardProps = {
 };
 
 function ProductionOrderCard({ order, productionRole }: OrderCardProps) {
-  const { clients, products } = useData();
+  const { clients, products } = useCmdCtx();
   const [statusDialog, setStatusDialog] = useState(false);
   const [incidentDialog, setIncidentDialog] = useState(false);
   const client = clients.find((c) => c.id === order.clientId);
@@ -382,18 +342,11 @@ function ProductionOrderCard({ order, productionRole }: OrderCardProps) {
             <div className="mt-3 flex flex-wrap gap-2">
               {canChange && (
                 <Button size="sm" className="gap-1.5 h-8" onClick={() => setStatusDialog(true)}>
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  Changer statut
+                  <ChevronRight className="h-3.5 w-3.5" />Changer statut
                 </Button>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 h-8 text-warning border-warning/40 hover:bg-warning/10"
-                onClick={() => setIncidentDialog(true)}
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Incident
+              <Button size="sm" variant="outline" className="gap-1.5 h-8 text-warning border-warning/40 hover:bg-warning/10" onClick={() => setIncidentDialog(true)}>
+                <AlertTriangle className="h-3.5 w-3.5" />Incident
               </Button>
             </div>
           )}
@@ -401,17 +354,9 @@ function ProductionOrderCard({ order, productionRole }: OrderCardProps) {
       </Card>
 
       {statusDialog && (
-        <StatusDialog
-          order={order}
-          productionRole={productionRole}
-          onClose={() => setStatusDialog(false)}
-        />
+        <StatusDialog order={order} productionRole={productionRole} onClose={() => setStatusDialog(false)} />
       )}
-      <IncidentDialog
-        order={order}
-        open={incidentDialog}
-        onClose={() => setIncidentDialog(false)}
-      />
+      <IncidentDialog order={order} open={incidentDialog} onClose={() => setIncidentDialog(false)} />
     </>
   );
 }
@@ -420,7 +365,7 @@ function ProductionOrderCard({ order, productionRole }: OrderCardProps) {
 
 function ProductionView() {
   const user = useAuth((s) => s.user);
-  const { orders, products } = useData();
+  const { orders, products } = useCmdCtx();
   const productionRole = user?.productionRole ?? "mixte";
 
   const myOrders = orders.filter((o) =>
@@ -443,9 +388,7 @@ function ProductionView() {
               ? `Commandes pour : ${user.assignedProducts.join(", ")}`
               : "Toutes les commandes de production"}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5 capitalize">
-            Rôle : {productionRole}
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5 capitalize">Rôle : {productionRole}</p>
         </div>
         <div className="flex gap-1 rounded-md border border-border bg-card p-1">
           <Button size="sm" variant={activeTab === "kanban" ? "default" : "ghost"} onClick={() => setActiveTab("kanban")}>
@@ -472,9 +415,7 @@ function ProductionView() {
                     <ProductionOrderCard key={o.id} order={o} productionRole={productionRole} />
                   ))}
                   {list.length === 0 && (
-                    <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-                      Aucune commande
-                    </div>
+                    <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">Aucune commande</div>
                   )}
                 </div>
               </div>
@@ -495,10 +436,10 @@ function ProductionView() {
   );
 }
 
-// ─── Commercial kanban (read-only statuses, managed by production) ────────────
+// ─── Commercial views ─────────────────────────────────────────────────────────
 
 function CommercialKanban() {
-  const { orders, clients } = useData();
+  const { orders, clients } = useCmdCtx();
   return (
     <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
       {ALL_PROD_STATUSES.map((status) => {
@@ -522,17 +463,13 @@ function CommercialKanban() {
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">{formatDate(o.date)}</div>
                     {o.refusalReason && (
-                      <div className="mt-1.5 rounded bg-destructive/10 px-1.5 py-1 text-[10px] text-destructive leading-tight">
-                        {o.refusalReason}
-                      </div>
+                      <div className="mt-1.5 rounded bg-destructive/10 px-1.5 py-1 text-[10px] text-destructive leading-tight">{o.refusalReason}</div>
                     )}
                   </div>
                 );
               })}
               {list.length === 0 && (
-                <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-                  Aucune commande
-                </div>
+                <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">Aucune commande</div>
               )}
             </div>
           </div>
@@ -543,7 +480,7 @@ function CommercialKanban() {
 }
 
 function CommercialListView() {
-  const { orders, clients } = useData();
+  const { orders, clients } = useCmdCtx();
   return (
     <Card className="card-soft border-0">
       <CardContent className="p-0">
@@ -587,7 +524,7 @@ function CommercialListView() {
 // ─── New Order wizard ─────────────────────────────────────────────────────────
 
 function NewOrder() {
-  const { clients, products, addOrder } = useData();
+  const { clients, products, addOrder } = useCmdCtx();
   const [step, setStep] = useState(1);
   const [clientId, setClientId] = useState("");
   const [items, setItems] = useState<{ productId: string; quantity: number; unitPrice: number }[]>([]);
@@ -598,10 +535,14 @@ function NewOrder() {
 
   const reset = () => { setStep(1); setClientId(""); setItems([]); setNotes(""); };
 
-  const submit = () => {
-    addOrder({ clientId, date: new Date().toISOString(), deliveryDate: new Date(delivery).toISOString(), items, status: "En attente", notes });
-    toast.success("Commande créée");
-    reset();
+  const submit = async () => {
+    try {
+      await addOrder({ clientId, date: new Date().toISOString(), deliveryDate: new Date(delivery).toISOString(), items, status: "En attente", notes });
+      toast.success("Commande créée");
+      reset();
+    } catch {
+      toast.error("Erreur lors de la création de la commande");
+    }
   };
 
   return (
@@ -643,7 +584,7 @@ function NewOrder() {
         )}
         {step === 2 && (
           <div className="space-y-4">
-            <Button variant="outline" size="sm" onClick={() => setItems([...items, { productId: products[0].id, quantity: 50, unitPrice: 30 }])}>
+            <Button variant="outline" size="sm" onClick={() => setItems([...items, { productId: products[0]?.id ?? "", quantity: 50, unitPrice: 30 }])}>
               <Plus className="h-4 w-4 mr-2" />Ajouter un produit
             </Button>
             {items.length === 0 && <div className="py-8 text-center text-muted-foreground text-sm">Aucun produit ajouté</div>}
@@ -699,10 +640,10 @@ function NewOrder() {
   );
 }
 
-// ─── Tracking (commercial view) ───────────────────────────────────────────────
+// ─── Tracking ─────────────────────────────────────────────────────────────────
 
 function Tracking() {
-  const { orders, clients } = useData();
+  const { orders, clients } = useCmdCtx();
   const steps = ALL_PROD_STATUSES;
   const idx = (s: OrderStatus) => steps.indexOf(s);
 
@@ -746,19 +687,14 @@ function Tracking() {
   );
 }
 
-// ─── Standalone incident report (for production, not tied to an order) ────────
+// ─── Standalone incident report ───────────────────────────────────────────────
 
 function IncidentReport() {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <Button
-        variant="outline"
-        className="gap-2 border-warning/40 text-warning hover:bg-warning/10"
-        onClick={() => setOpen(true)}
-      >
-        <AlertTriangle className="h-4 w-4" />
-        Signaler un incident général
+      <Button variant="outline" className="gap-2 border-warning/40 text-warning hover:bg-warning/10" onClick={() => setOpen(true)}>
+        <AlertTriangle className="h-4 w-4" />Signaler un incident général
       </Button>
       <IncidentDialog order={null} open={open} onClose={() => setOpen(false)} />
     </div>
@@ -768,48 +704,111 @@ function IncidentReport() {
 // ─── Page root ────────────────────────────────────────────────────────────────
 
 export default function Commandes() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const user = useAuth((s) => s.user);
   const isProduction = user?.role === "Responsable Production";
   const [view, setView] = useState<"kanban" | "list">("kanban");
 
-  if (isProduction) {
+  const reload = () => {
+    Promise.all([
+      api.orders.getAll(),
+      api.clients.getAll(),
+      api.products.getAll(),
+    ])
+      .then(([ords, cls, prods]) => {
+        setOrders(ords as Order[]);
+        setClients(cls as Client[]);
+        setProducts(prods as Product[]);
+      })
+      .catch(() => toast.error("Erreur lors du chargement des données"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const handleUpdateOrderStatus = async (
+    id: string,
+    status: OrderStatus,
+    partialQty?: Record<string, number>,
+    refusalReason?: string,
+  ) => {
+    await api.orders.updateStatus(id, { status, partialQuantities: partialQty, refusalReason });
+    reload();
+  };
+
+  const handleAddOrder = async (o: Omit<Order, "id" | "number">) => {
+    await api.orders.create(o);
+    reload();
+  };
+
+  const handleAddIncident = async (i: Omit<Incident, "id">) => {
+    await api.incidents.create(i);
+  };
+
+  if (loading) {
     return (
       <div>
-        <PageHeader
-          title="Mes Commandes"
-          description={`Suivi de production${user?.assignedProducts?.length ? ` — ${user.assignedProducts.join(", ")}` : ""}`}
-        />
-        <div className="mb-4">
-          <IncidentReport />
+        <PageHeader title="Commandes" description="Gestion et suivi des commandes clients" />
+        <div className="flex items-center justify-center py-20">
+          <p className="text-muted-foreground animate-pulse">Chargement des données...</p>
         </div>
-        <ProductionView />
       </div>
     );
   }
 
+  const ctxValue: CmdCtxValue = {
+    orders,
+    clients,
+    products,
+    updateOrderStatus: handleUpdateOrderStatus,
+    addOrder: handleAddOrder,
+    addIncident: handleAddIncident,
+    reload,
+  };
+
+  if (isProduction) {
+    return (
+      <CmdCtx.Provider value={ctxValue}>
+        <div>
+          <PageHeader
+            title="Mes Commandes"
+            description={`Suivi de production${user?.assignedProducts?.length ? ` — ${user.assignedProducts.join(", ")}` : ""}`}
+          />
+          <div className="mb-4"><IncidentReport /></div>
+          <ProductionView />
+        </div>
+      </CmdCtx.Provider>
+    );
+  }
+
   return (
-    <div>
-      <PageHeader title="Commandes" description="Gestion et suivi des commandes clients" />
-      <Tabs defaultValue="all">
-        <TabsList>
-          <TabsTrigger value="all">Toutes</TabsTrigger>
-          <TabsTrigger value="new">Nouvelle commande</TabsTrigger>
-          <TabsTrigger value="track">Suivi</TabsTrigger>
-        </TabsList>
-        <TabsContent value="all" className="mt-4">
-          <div className="mb-3 flex justify-end gap-1 rounded-md border border-border bg-card p-1 w-fit ml-auto">
-            <Button size="sm" variant={view === "kanban" ? "default" : "ghost"} onClick={() => setView("kanban")}>
-              <LayoutGrid className="h-4 w-4 mr-1" />Kanban
-            </Button>
-            <Button size="sm" variant={view === "list" ? "default" : "ghost"} onClick={() => setView("list")}>
-              <List className="h-4 w-4 mr-1" />Liste
-            </Button>
-          </div>
-          {view === "kanban" ? <CommercialKanban /> : <CommercialListView />}
-        </TabsContent>
-        <TabsContent value="new" className="mt-4"><NewOrder /></TabsContent>
-        <TabsContent value="track" className="mt-4"><Tracking /></TabsContent>
-      </Tabs>
-    </div>
+    <CmdCtx.Provider value={ctxValue}>
+      <div>
+        <PageHeader title="Commandes" description="Gestion et suivi des commandes clients" />
+        <Tabs defaultValue="all">
+          <TabsList>
+            <TabsTrigger value="all">Toutes</TabsTrigger>
+            <TabsTrigger value="new">Nouvelle commande</TabsTrigger>
+            <TabsTrigger value="track">Suivi</TabsTrigger>
+          </TabsList>
+          <TabsContent value="all" className="mt-4">
+            <div className="mb-3 flex justify-end gap-1 rounded-md border border-border bg-card p-1 w-fit ml-auto">
+              <Button size="sm" variant={view === "kanban" ? "default" : "ghost"} onClick={() => setView("kanban")}>
+                <LayoutGrid className="h-4 w-4 mr-1" />Kanban
+              </Button>
+              <Button size="sm" variant={view === "list" ? "default" : "ghost"} onClick={() => setView("list")}>
+                <List className="h-4 w-4 mr-1" />Liste
+              </Button>
+            </div>
+            {view === "kanban" ? <CommercialKanban /> : <CommercialListView />}
+          </TabsContent>
+          <TabsContent value="new" className="mt-4"><NewOrder /></TabsContent>
+          <TabsContent value="track" className="mt-4"><Tracking /></TabsContent>
+        </Tabs>
+      </div>
+    </CmdCtx.Provider>
   );
 }

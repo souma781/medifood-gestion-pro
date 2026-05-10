@@ -64,7 +64,7 @@ export function AppSidebar() {
                       className={cn(
                         "h-10 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         active &&
-                          "bg-sidebar-accent text-sidebar-accent-foreground font-medium border-l-2 border-accent",
+                        "bg-sidebar-accent text-sidebar-accent-foreground font-medium border-l-2 border-accent",
                       )}
                     >
                       <NavLink to={item.url} end={false}>
@@ -90,7 +90,7 @@ export function AppSidebar() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-sidebar-foreground">{user.name}</div>
               <span className={cn("inline-block mt-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium", ROLE_BADGE[user.role])}>
-                {ROLE_SHORT[user.role]}{user.assignedProducts?.length ? ` · ${user.assignedProducts.join(", ")}` : ""}
+                {ROLE_SHORT[user.role]}{Array.isArray(user.assignedProducts) && user.assignedProducts.length ? ` · ${user.assignedProducts.join(", ")}` : ""}
               </span>
             </div>
           </div>
