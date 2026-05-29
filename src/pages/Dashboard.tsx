@@ -90,11 +90,12 @@ export default function Dashboard() {
   const filteredProd = assignedProductIds?.length ? production.filter((p) => assignedProductIds.includes(p.productId)) : production;
   const todayProd = filteredProd.filter((p) => new Date(p.date).toDateString() === todayKey).reduce((s, p) => s + p.produced, 0);
   const yProd = filteredProd.filter((p) => new Date(p.date).toDateString() === yesterdayKey).reduce((s, p) => s + p.produced, 0);
-  const totalStock = (assignedProductIds?.length ? products.filter((p) => assignedProductIds.includes(p.id)) : products).reduce((s, p) => s + p.currentStock, 0);
+  const totalStock = (assignedProductIds?.length ? products.filter((p) => assignedProductIds.includes(p.id)) : products).reduce((s, p) => s + (parseFloat(String(p.currentStock)) || 0), 0);
   const pending = orders.filter((o) => o.status === "En attente" || o.status === "Confirmée").length;
   const monthRevenue = orders
-    .filter((o) => o.status === "Livrée" && new Date(o.date).getMonth() === today.getMonth())
-    .reduce((s, o) => s + o.items.reduce((a, it) => a + it.quantity * it.unitPrice, 0), 0);
+    .filter((o) => o.status === "Terminé" && new Date(o.date).getMonth() === today.getMonth())
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .reduce((s, o) => s + o.items.reduce((a, it) => a + parseFloat(String(it.quantity)) * parseFloat(String((it as any).unit_price ?? it.unitPrice ?? 0)), 0), 0);
 
   const lineData = useMemo(() => {
     const days: any[] = [];
@@ -114,14 +115,18 @@ export default function Dashboard() {
   }, [production, products]);
 
   const monthlyRevenue = useMemo(() => {
-    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
     return months.map((m, i) => ({
       month: m,
-      revenue: Math.round(15000 + Math.random() * 35000 + i * 800),
+      revenue: orders
+        .filter((o) => o.status === "Terminé" && new Date(o.date).getMonth() === i
+          && new Date(o.date).getFullYear() === new Date().getFullYear())
+        .reduce((sum, o) => sum + (o.items || []).reduce(
+          (s: number, it: any) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0), 0), 0),
     }));
-  }, []);
+  }, [orders]);
 
-  const stockDist = products.map((p) => ({ name: p.name, value: p.currentStock }));
+  const stockDist = products.map((p) => ({ name: p.name, value: Number(p.currentStock) }));
   const recentProd = production.slice(0, 5);
   const recentOrders = orders.slice(0, 5);
 
@@ -268,7 +273,7 @@ export default function Dashboard() {
               </TableHeader>
               <TableBody>
                 {recentOrders.map((o) => {
-                  const total = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+                  const total = o.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitPrice), 0);
                   return (
                     <TableRow key={o.id}>
                       <TableCell className="font-mono text-xs">{o.number}</TableCell>

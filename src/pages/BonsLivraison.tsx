@@ -38,7 +38,8 @@ const useBonsCtx = () => useContext(BonsCtx);
 const MIN_ROWS = 15;
 
 function blTotal(bon: BonLivraison) {
-  return bon.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return bon.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
 }
 
 // ─── print styles ─────────────────────────────────────────────────────────────
@@ -206,14 +207,15 @@ function BonPreview({ bon, onClose }: { bon: BonLivraison; onClose: () => void }
             <tbody>
               {Array.from({ length: rowCount }).map((_, i) => {
                 const item = bon.items[i] as BonItem | undefined;
-                const lineTotal = item ? item.quantity * item.unitPrice : 0;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const lineTotal = item ? parseFloat(String(item.quantity)) * parseFloat(String((item as any).unit_price ?? item.unitPrice ?? 0)) : 0;
                 return (
                   <tr key={i} style={{ height: "18px" }}>
                     <td style={{ ...cell, textAlign: "center" }}>{item ? i + 1 : ""}</td>
                     <td style={{ ...cell }}>{item?.designation ?? ""}</td>
                     <td style={{ ...cell, textAlign: "center" }}>{item?.unit ?? ""}</td>
                     <td style={{ ...cell, textAlign: "center" }}>{item ? item.quantity : ""}</td>
-                    <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(item.unitPrice) : ""}</td>
+                    <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(parseFloat(String((item as any).unit_price ?? item.unitPrice ?? 0))) : ""}</td>
                     <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(lineTotal) : ""}</td>
                   </tr>
                 );
@@ -363,7 +365,7 @@ function NewBon() {
   const [chauffeur, setChauffeur] = useState("");
   const [matriculeFiscale, setMatriculeFiscale] = useState("");
   const [items, setItems] = useState<BonItem[]>([
-    { designation: "", quantity: 0, unit: "Kg", unitPrice: 0, conditionnement: "", observations: "" },
+    { productId: undefined, designation: "", quantity: 0, unit: "Kg", unitPrice: 0, conditionnement: "", observations: "" },
   ]);
   const [notes, setNotes] = useState("");
   const today = new Date().toISOString().slice(0, 10);
@@ -388,6 +390,7 @@ function NewBon() {
       o.items.map((it) => {
         const p = products.find((pr) => pr.id === it.productId);
         return {
+          productId: it.productId,
           designation: p?.name ?? "",
           quantity: it.quantity,
           unit: "Kg" as const,
@@ -403,7 +406,7 @@ function NewBon() {
     setItems(items.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
 
   const resetForm = () => {
-    setItems([{ designation: "", quantity: 0, unit: "Kg", unitPrice: 0, conditionnement: "", observations: "" }]);
+    setItems([{ productId: undefined, designation: "", quantity: 0, unit: "Kg", unitPrice: 0, conditionnement: "", observations: "" }]);
     setClientId("");
     setOrderId("");
     setNotes("");
@@ -532,7 +535,7 @@ function NewBon() {
         <div>
           <div className="mb-2 flex items-center justify-between">
             <Label>Produits</Label>
-            <Button size="sm" variant="outline" onClick={() => setItems([...items, { designation: "", quantity: 0, unit: "Kg", unitPrice: 0, conditionnement: "", observations: "" }])}>
+            <Button size="sm" variant="outline" onClick={() => setItems([...items, { productId: undefined, designation: "", quantity: 0, unit: "Kg", unitPrice: 0, conditionnement: "", observations: "" }])}>
               <Plus className="h-4 w-4 mr-1" />Ajouter ligne
             </Button>
           </div>
@@ -601,7 +604,7 @@ export default function BonsLivraison() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const reload = () => {
+  const reload = () =>
     Promise.all([
       api.bons.getAll(),
       api.clients.getAll(),
@@ -616,13 +619,12 @@ export default function BonsLivraison() {
       })
       .catch(() => toast.error("Erreur lors du chargement des données"))
       .finally(() => setLoading(false));
-  };
 
   useEffect(() => { reload(); }, []);
 
   const handleAddBon = async (b: Omit<BonLivraison, "id" | "number"> & { number?: string }): Promise<string> => {
     const created = await api.bons.create(b) as any;
-    reload();
+    await reload();
     return created.id ?? created._id ?? "";
   };
 

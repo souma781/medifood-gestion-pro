@@ -81,7 +81,8 @@ export const api = {
     // ── STOCK ────────────────────────────────────────────────
     stock: {
         getMovements: () => request<unknown[]>("GET", "/stock/movements"),
-        addMovement: (data: unknown) => request<unknown>("POST", "/stock/movements", data),
+        getHistory:   () => request<unknown[]>("GET", "/stock/history"),
+        addMovement:  (data: unknown) => request<unknown>("POST", "/stock/movements", data),
     },
 
     // ── ORDERS ───────────────────────────────────────────────

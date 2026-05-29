@@ -452,7 +452,8 @@ function CommercialKanban() {
             </div>
             <div className="space-y-2">
               {list.map((o) => {
-                const total = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const total = o.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
                 return (
                   <div key={o.id} className="rounded-lg border border-border bg-card p-3 shadow-sm">
                     <div className="font-mono text-xs text-muted-foreground">{o.number}</div>
@@ -497,7 +498,8 @@ function CommercialListView() {
           </TableHeader>
           <TableBody>
             {orders.map((o) => {
-              const total = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const total = o.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
               return (
                 <TableRow key={o.id}>
                   <TableCell className="font-mono text-xs">{o.number}</TableCell>

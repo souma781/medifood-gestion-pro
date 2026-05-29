@@ -79,6 +79,7 @@ export type Order = {
 export type BonStatus = "Brouillon" | "Émis" | "Livré";
 
 export type BonItem = {
+  productId?: string;
   designation: string;
   quantity: number;
   unit: "Kg" | "1P";

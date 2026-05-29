@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/store/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,61 +13,75 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/medifood/PageHeader";
 import { StatusBadge } from "@/components/medifood/StatusBadge";
 import { formatDate, formatKg } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type { Product, StockMovement } from "@/store/data";
+
+type StockSummary = {
+  id: string;
+  name: string;
+  unit: string;
+  matiere_premiere: number;
+  min_stock: number;
+  en_cours: number;
+  pret_livraison: number;
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 type StockCardProps = {
-  product: Product;
+  summary: StockSummary;
   onAdjust: (m: Omit<StockMovement, "id">) => Promise<void>;
 };
 
-function StockCard({ product, onAdjust }: StockCardProps) {
+function StockCard({ summary, onAdjust }: StockCardProps) {
+  const user = useAuth((s) => s.user);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"Entrée" | "Sortie" | "Ajustement">("Entrée");
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
 
-  const pct = Math.min(100, (product.currentStock / product.maxCapacity) * 100);
-  const color = pct > 50 ? "bg-success" : pct > 20 ? "bg-warning" : "bg-destructive";
-
   const submit = async () => {
     if (!qty) return toast.error("Quantité requise");
     try {
-      await onAdjust({ date: new Date().toISOString(), productId: product.id, type, quantity: parseFloat(qty), reason: reason || "—", user: "Admin" });
+      await onAdjust({ date: new Date().toISOString(), productId: summary.id, type, quantity: parseFloat(qty), reason: reason || "—", user: user?.name ?? "Inconnu" });
       toast.success("Stock ajusté");
       setOpen(false); setQty(""); setReason("");
-    } catch {
-      toast.error("Erreur lors de l'ajustement");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || "Erreur lors de l'ajustement");
     }
   };
 
   return (
     <Card className="card-soft border-0">
       <CardContent className="p-5">
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
           <Package className="h-4 w-4 text-primary" />
-          {product.name}
+          {summary.name}
         </div>
-        <div className="mt-3 flex items-baseline justify-between">
-          <span className="text-3xl font-bold text-foreground">{formatKg(product.currentStock)}</span>
-          <span className="text-xs text-muted-foreground">/ {formatKg(product.maxCapacity)}</span>
-        </div>
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div className={cn("h-full transition-all", color)} style={{ width: `${pct}%` }} />
-        </div>
-        <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-          <span>Min: {formatKg(product.minStock)}</span>
-          <span>{Math.round(pct)}%</span>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Matière première</span>
+            <span className="font-semibold">{formatKg(summary.matiere_premiere)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">En cours (cuit)</span>
+            <span className="font-semibold text-warning">{formatKg(summary.en_cours)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Prêt à livrer</span>
+            <span className="font-semibold text-success">{formatKg(summary.pret_livraison)}</span>
+          </div>
+          <div className="flex justify-between border-t pt-2 text-xs text-muted-foreground">
+            <span>Seuil min</span>
+            <span>{formatKg(summary.min_stock)}</span>
+          </div>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" className="mt-4 w-full">Ajuster le stock</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Ajuster — {product.name}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>Ajuster — {summary.name}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Type de mouvement</Label>
@@ -182,14 +197,16 @@ function Alerts({ products }: AlertsProps) {
 
 export default function Inventaire() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [stockSummaries, setStockSummaries] = useState<StockSummary[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = () => {
-    Promise.all([api.products.getAll(), api.stock.getMovements()])
-      .then(([prods, movs]) => {
+    Promise.all([api.products.getAll(), api.stock.getMovements(), api.stock.getHistory()])
+      .then(([prods, summaries, history]) => {
         setProducts(prods as Product[]);
-        setMovements(movs as StockMovement[]);
+        setStockSummaries(summaries as StockSummary[]);
+        setMovements(history as StockMovement[]);
       })
       .catch(() => toast.error("Erreur lors du chargement des données"))
       .finally(() => setLoading(false));
@@ -224,7 +241,7 @@ export default function Inventaire() {
         </TabsList>
         <TabsContent value="stock" className="mt-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {products.map((p) => (<StockCard key={p.id} product={p} onAdjust={handleAddMovement} />))}
+            {stockSummaries.map((s) => (<StockCard key={s.id} summary={s} onAdjust={handleAddMovement} />))}
           </div>
         </TabsContent>
         <TabsContent value="moves" className="mt-4">

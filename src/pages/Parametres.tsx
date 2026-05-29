@@ -248,6 +248,7 @@ type UsersTabProps = {
 };
 
 function UsersTab({ products }: UsersTabProps) {
+  const currentUser = useAuth((s) => s.user);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogUser, setDialogUser] = useState<ManagedUser | null | "new">(undefined as any);
@@ -276,8 +277,8 @@ function UsersTab({ products }: UsersTabProps) {
         toast.success("Utilisateur créé");
       }
       reload();
-    } catch {
-      toast.error("Erreur lors de l'enregistrement");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
     }
     closeDialog();
   };
@@ -366,9 +367,11 @@ function UsersTab({ products }: UsersTabProps) {
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(u)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteId(u.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {u.id !== currentUser?.id && (
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteId(u.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -426,8 +429,8 @@ function ProductsTab({ products, loading, reload }: ProductsTabProps) {
         toast.success("Produit créé");
       }
       reload();
-    } catch {
-      toast.error("Erreur lors de l'enregistrement");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
     }
     closeDialog();
   };

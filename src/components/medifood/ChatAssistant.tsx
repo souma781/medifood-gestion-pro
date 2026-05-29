@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send } from "lucide-react";
 import { useAuth } from "@/store/auth";
-import { useData } from "@/store/data";
 
 type Message = {
   role: "user" | "assistant";
@@ -14,22 +13,8 @@ const QUICK_CHIPS = [
   "📋 Aide sur les bons de livraison",
 ];
 
-function buildSystemPrompt(user: { name: string; role: string }, stockSummary: string, orderSummary: string) {
-  return `Tu es un assistant intelligent intégré dans MediProd, un système de gestion de production alimentaire (fruits secs et enrobés).
-
-Utilisateur connecté : ${user.name}
-Rôle : ${user.role}
-
-Contexte actuel de l'application :
-${stockSummary}
-${orderSummary}
-
-Tu réponds toujours en français, de manière concise et professionnelle. Tu aides l'utilisateur à comprendre les données de l'application, interpréter les indicateurs, et prendre des décisions. Tu ne peux pas modifier les données directement.`;
-}
-
 export function ChatAssistant() {
   const user = useAuth((s) => s.user);
-  const { products, orders } = useData();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -62,20 +47,6 @@ export function ChatAssistant() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  function buildContextSummary() {
-    const lowStock = products.filter((p) => p.currentStock < p.minStock);
-    const stockSummary =
-      lowStock.length > 0
-        ? `Stocks en alerte : ${lowStock.map((p) => `${p.name} (${p.currentStock}/${p.minStock} kg)`).join(", ")}.`
-        : "Tous les stocks sont au-dessus du seuil minimum.";
-
-    const pending = orders.filter((o) => o.status === "En attente").length;
-    const inProgress = orders.filter((o) => ["En cuisson", "Cuit", "En emballage"].includes(o.status)).length;
-    const orderSummary = `Commandes : ${pending} en attente, ${inProgress} en cours de production, ${orders.filter((o) => o.status === "Terminé").length} terminées.`;
-
-    return { stockSummary, orderSummary };
-  }
-
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
     const userMsg: Message = { role: "user", content: text.trim() };
@@ -84,28 +55,17 @@ export function ChatAssistant() {
     setInput("");
     setLoading(true);
 
-    const { stockSummary, orderSummary } = buildContextSummary();
-    const systemPrompt = buildSystemPrompt(
-      { name: user?.name ?? "Utilisateur", role: user?.role ?? "" },
-      stockSummary,
-      orderSummary,
-    );
-
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const stored = localStorage.getItem("medifood-auth");
+      const token = stored ? (JSON.parse(stored)?.state?.token ?? null) : null;
+
+      const response = await fetch("http://localhost:5000/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          model: "claude-opus-4-5",
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: next.map((m) => ({ role: m.role, content: m.content })),
-        }),
+        body: JSON.stringify({ messages: next.map((m) => ({ role: m.role, content: m.content })) }),
       });
 
       if (!response.ok) {
@@ -113,7 +73,7 @@ export function ChatAssistant() {
       }
 
       const data = await response.json();
-      const reply = data.content?.[0]?.text ?? "Je n'ai pas pu générer de réponse.";
+      const reply = data.reply ?? "Je n'ai pas pu générer de réponse.";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
       setMessages((prev) => [
@@ -148,7 +108,7 @@ export function ChatAssistant() {
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-sm">🤖</div>
               <div>
                 <p className="text-sm font-semibold text-white">Assistant MediProd</p>
-                <p className="text-[10px] text-white/70">Propulsé par Claude AI</p>
+                <p className="text-[10px] text-white/70">Propulsé par Groq API (llama-3.3-70b-versatile)</p>
               </div>
             </div>
             <button
