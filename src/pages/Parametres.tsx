@@ -277,10 +277,10 @@ function UsersTab({ products }: UsersTabProps) {
         toast.success("Utilisateur créé");
       }
       reload();
+      closeDialog();
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
+      toast.error(err?.message || "Erreur lors de l'enregistrement");
     }
-    closeDialog();
   };
 
   const handleToggleActive = async (u: ManagedUser, active: boolean) => {
@@ -442,8 +442,8 @@ function ProductsTab({ products, loading, reload }: ProductsTabProps) {
       setDeleteId(null);
       toast.success("Produit supprimé");
       reload();
-    } catch {
-      toast.error("Erreur lors de la suppression");
+    } catch (err: any) {
+      toast.error(err?.message || "Erreur lors de la suppression");
     }
   };
 

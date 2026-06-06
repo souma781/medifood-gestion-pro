@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +10,6 @@ import { useAuth } from "@/store/auth";
 import { ROLE_BADGE, ROLE_SHORT } from "@/lib/rbac";
 import { Logo } from "@/components/medifood/Logo";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 export default function Login() {
   const [email, setEmail] = useState("admin@medifood.tn");
@@ -19,18 +19,16 @@ export default function Login() {
   const users = useAuth((s) => s.users);
   const navigate = useNavigate();
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      const r = login(email, password);
-      setLoading(false);
-      if (r.ok === false) {
-        toast.error(r.error);
-        return;
-      }
+    const result = await login(email, password);
+    if (!result.ok) {
+      toast.error(result.error ?? "Identifiants invalides");
+    } else {
       navigate("/dashboard");
-    }, 500);
+    }
+    setLoading(false);
   };
 
   const fill = (u: typeof users[number]) => {

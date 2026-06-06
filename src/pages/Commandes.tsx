@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle,
+  Ban,
   CheckCircle2,
   Circle,
   LayoutGrid,
@@ -371,7 +372,7 @@ function ProductionView() {
   const myOrders = orders.filter((o) =>
     !user?.assignedProducts?.length ||
     o.items.some((it) => {
-      const prodName = products.find((p) => p.id === it.productId)?.name;
+      const prodName = products.find((p) => p.id === (it.product_id ?? it.productId))?.name;
       return prodName && user.assignedProducts!.includes(prodName);
     }),
   );
@@ -438,49 +439,63 @@ function ProductionView() {
 
 // ─── Commercial views ─────────────────────────────────────────────────────────
 
-function CommercialKanban() {
+function CommercialKanban({ onSelect }: { onSelect: (id: string) => void }) {
   const { orders, clients } = useCmdCtx();
+  const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   return (
-    <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-      {ALL_PROD_STATUSES.map((status) => {
-        const list = orders.filter((o) => o.status === status);
-        return (
-          <div key={status} className="rounded-lg bg-muted/40 p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">{status}</h3>
-              <span className="rounded-full bg-card px-2 py-0.5 text-xs">{list.length}</span>
-            </div>
-            <div className="space-y-2">
-              {list.map((o) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const total = o.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
-                return (
-                  <div key={o.id} className="rounded-lg border border-border bg-card p-3 shadow-sm">
-                    <div className="font-mono text-xs text-muted-foreground">{o.number}</div>
-                    <div className="mt-1 font-medium text-sm">{clients.find((c) => c.id === o.clientId)?.company}</div>
-                    <div className="mt-2 flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{o.items.length} produit(s)</span>
-                      <span className="font-semibold text-primary">{formatTND(total)}</span>
+    <>
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+        {ALL_PROD_STATUSES.map((status) => {
+          const list = orders.filter((o) => o.status === status);
+          return (
+            <div key={status} className="rounded-lg bg-muted/40 p-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">{status}</h3>
+                <span className="rounded-full bg-card px-2 py-0.5 text-xs">{list.length}</span>
+              </div>
+              <div className="space-y-2">
+                {list.map((o) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const total = o.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
+                  return (
+                    <div key={o.id} className="rounded-lg border border-border bg-card p-3 shadow-sm cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" onClick={() => onSelect(o.id)}>
+                      <div className="font-mono text-xs text-muted-foreground">{o.number}</div>
+                      <div className="mt-1 font-medium text-sm">{clients.find((c) => c.id === o.clientId)?.company}</div>
+                      <div className="mt-2 flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{o.items.length} produit(s)</span>
+                        <span className="font-semibold text-primary">{formatTND(total)}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{formatDate(o.date)}</div>
+                      {o.refusalReason && (
+                        <div className="mt-1.5 rounded bg-destructive/10 px-1.5 py-1 text-[10px] text-destructive leading-tight">{o.refusalReason}</div>
+                      )}
+                      {o.status === "En attente" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2 h-7 w-full gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={(e) => { e.stopPropagation(); setCancelTarget(o); }}
+                        >
+                          <Ban className="h-3 w-3" />Annuler
+                        </Button>
+                      )}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">{formatDate(o.date)}</div>
-                    {o.refusalReason && (
-                      <div className="mt-1.5 rounded bg-destructive/10 px-1.5 py-1 text-[10px] text-destructive leading-tight">{o.refusalReason}</div>
-                    )}
-                  </div>
-                );
-              })}
-              {list.length === 0 && (
-                <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">Aucune commande</div>
-              )}
+                  );
+                })}
+                {list.length === 0 && (
+                  <div className="rounded border border-dashed border-border py-6 text-center text-xs text-muted-foreground">Aucune commande</div>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+      <CancelOrderDialog order={cancelTarget} onClose={() => setCancelTarget(null)} />
+    </>
   );
 }
 
-function CommercialListView() {
+function CommercialListView({ onSelect }: { onSelect: (id: string) => void }) {
   const { orders, clients } = useCmdCtx();
   return (
     <Card className="card-soft border-0">
@@ -501,7 +516,7 @@ function CommercialListView() {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const total = o.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
               return (
-                <TableRow key={o.id}>
+                <TableRow key={o.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onSelect(o.id)}>
                   <TableCell className="font-mono text-xs">{o.number}</TableCell>
                   <TableCell className="font-medium">{clients.find((c) => c.id === o.clientId)?.company}</TableCell>
                   <TableCell>{formatDate(o.date)}</TableCell>
@@ -520,6 +535,204 @@ function CommercialListView() {
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Order detail dialog ──────────────────────────────────────────────────────
+
+function OrderDetailDialog({ orderId, onClose }: { orderId: string | null; onClose: () => void }) {
+  const { orders, clients, products, updateOrderStatus } = useCmdCtx();
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const order = orders.find((o) => o.id === orderId);
+
+  useEffect(() => { setCancelConfirm(false); }, [orderId]);
+
+  const handleCancel = async () => {
+    if (!order) return;
+    setCancelling(true);
+    try {
+      await updateOrderStatus(order.id, "Refusé", undefined, "Annulée par l'utilisateur");
+      toast.success("Commande annulée");
+      onClose();
+    } catch {
+      toast.error("Erreur lors de l'annulation");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  if (!order) return null;
+
+  const client = clients.find((c) => c.id === order.clientId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const total = order.items.reduce((s, i) => s + parseFloat(String(i.quantity)) * parseFloat(String((i as any).unit_price ?? i.unitPrice ?? 0)), 0);
+
+  return (
+    <Dialog open={!!orderId} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3">
+            <span className="font-mono text-base">{order.number}</span>
+            <StatusBadge status={order.status} />
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          {/* Client */}
+          <div className="rounded-lg bg-muted/40 p-4 text-sm">
+            <div className="text-xs text-muted-foreground mb-1">Client</div>
+            <div className="font-semibold">{client?.company ?? "—"}</div>
+            {client?.name && <div className="text-muted-foreground">{client.name}</div>}
+            {client?.address && <div className="text-muted-foreground">{client.address}{client.city ? `, ${client.city}` : ""}</div>}
+            {client?.phone && <div className="text-muted-foreground">{client.phone}</div>}
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground">Date de commande</div>
+              <div className="font-medium mt-0.5">{formatDate(order.date)}</div>
+            </div>
+            {order.deliveryDate && (
+              <div>
+                <div className="text-xs text-muted-foreground">Date de livraison</div>
+                <div className="font-medium mt-0.5">{formatDate(order.deliveryDate)}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Products table */}
+          <div>
+            <div className="text-xs text-muted-foreground mb-2">Produits commandés</div>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Produit</TableHead>
+                    <TableHead className="text-right">Quantité</TableHead>
+                    <TableHead className="text-right">Prix unitaire</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {order.items.map((it, idx) => {
+                    const prod = products.find((p) => p.id === it.productId);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const unitPrice = parseFloat(String((it as any).unit_price ?? it.unitPrice ?? 0));
+                    const qty = parseFloat(String(it.quantity));
+                    const partial = order.partialQuantities?.[it.productId];
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">{prod?.name ?? "—"}</TableCell>
+                        <TableCell className="text-right">
+                          {partial !== undefined ? (
+                            <span>
+                              <span className="text-warning font-semibold">{partial}</span>
+                              <span className="text-muted-foreground"> / {qty} kg</span>
+                            </span>
+                          ) : (
+                            `${qty} kg`
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{formatTND(unitPrice)}</TableCell>
+                        <TableCell className="text-right font-semibold">{formatTND(qty * unitPrice)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          {/* Total */}
+          <div className="flex justify-between items-center border-t pt-3">
+            <span className="font-semibold">Total</span>
+            <span className="text-lg font-bold text-primary">{formatTND(total)}</span>
+          </div>
+
+          {/* Notes */}
+          {order.notes && (
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Notes</div>
+              <div className="rounded-lg bg-muted/40 p-3 text-sm">{order.notes}</div>
+            </div>
+          )}
+
+          {/* Refusal reason */}
+          {order.refusalReason && (
+            <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="text-xs font-medium mb-1">Motif du refus</div>
+              {order.refusalReason}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          {cancelConfirm ? (
+            <>
+              <span className="mr-auto self-center text-sm text-destructive">Confirmer l'annulation de {order.number} ?</span>
+              <Button variant="outline" onClick={() => setCancelConfirm(false)} disabled={cancelling}>Non</Button>
+              <Button variant="destructive" onClick={handleCancel} disabled={cancelling}>
+                {cancelling ? "Annulation..." : "Oui, annuler"}
+              </Button>
+            </>
+          ) : (
+            <>
+              {order.status === "En attente" && (
+                <Button variant="destructive" className="mr-auto" onClick={() => setCancelConfirm(true)}>
+                  <Ban className="h-4 w-4 mr-1.5" />Annuler la commande
+                </Button>
+              )}
+              <Button variant="outline" onClick={onClose}>Fermer</Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Cancel order dialog (Kanban shortcut) ────────────────────────────────────
+
+function CancelOrderDialog({ order, onClose }: { order: Order | null; onClose: () => void }) {
+  const { updateOrderStatus } = useCmdCtx();
+  const [loading, setLoading] = useState(false);
+
+  const confirm = async () => {
+    if (!order) return;
+    setLoading(true);
+    try {
+      await updateOrderStatus(order.id, "Refusé", undefined, "Annulée par l'utilisateur");
+      toast.success("Commande annulée");
+      onClose();
+    } catch {
+      toast.error("Erreur lors de l'annulation");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!order} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Ban className="h-5 w-5 text-destructive" />
+            Annuler la commande
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground py-2">
+          Voulez-vous annuler la commande <span className="font-mono font-semibold text-foreground">{order?.number}</span> ? Cette action est irréversible.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Non</Button>
+          <Button variant="destructive" onClick={confirm} disabled={loading}>
+            {loading ? "Annulation..." : "Oui, annuler"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -591,13 +804,19 @@ function NewOrder() {
             </Button>
             {items.length === 0 && <div className="py-8 text-center text-muted-foreground text-sm">Aucun produit ajouté</div>}
             {items.map((it, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2">
+              <div key={idx} className="grid grid-cols-12 gap-2 items-start">
                 <Select value={it.productId} onValueChange={(v) => setItems(items.map((x, i) => i === idx ? { ...x, productId: v } : x))}>
                   <SelectTrigger className="col-span-5"><SelectValue /></SelectTrigger>
                   <SelectContent>{products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}</SelectContent>
                 </Select>
-                <Input className="col-span-2" type="number" placeholder="Qté kg" value={it.quantity} onChange={(e) => setItems(items.map((x, i) => i === idx ? { ...x, quantity: parseFloat(e.target.value) || 0 } : x))} />
-                <Input className="col-span-2" type="number" placeholder="PU" value={it.unitPrice} onChange={(e) => setItems(items.map((x, i) => i === idx ? { ...x, unitPrice: parseFloat(e.target.value) || 0 } : x))} />
+                <div className="col-span-2">
+                  <Input type="number" placeholder="Qté kg" value={it.quantity} className={it.quantity <= 0 ? "border-destructive" : ""} onChange={(e) => setItems(items.map((x, i) => i === idx ? { ...x, quantity: parseFloat(e.target.value) || 0 } : x))} />
+                  {it.quantity <= 0 && <p className="mt-1 text-xs text-destructive">Quantité requise</p>}
+                </div>
+                <div className="col-span-2">
+                  <Input type="number" placeholder="PU" value={it.unitPrice} className={it.unitPrice <= 0 ? "border-destructive" : ""} onChange={(e) => setItems(items.map((x, i) => i === idx ? { ...x, unitPrice: parseFloat(e.target.value) || 0 } : x))} />
+                  {it.unitPrice <= 0 && <p className="mt-1 text-xs text-destructive">Prix requis</p>}
+                </div>
                 <div className="col-span-2 flex items-center text-sm font-semibold">{formatTND(it.quantity * it.unitPrice)}</div>
                 <Button variant="ghost" size="icon" className="col-span-1 text-destructive" onClick={() => setItems(items.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></Button>
               </div>
@@ -608,7 +827,7 @@ function NewOrder() {
             </div>
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(1)}>Précédent</Button>
-              <Button disabled={items.length === 0} onClick={() => setStep(3)}>Suivant</Button>
+              <Button disabled={items.length === 0 || items.some((it) => it.quantity <= 0 || it.unitPrice <= 0)} onClick={() => setStep(3)}>Suivant</Button>
             </div>
           </div>
         )}
@@ -713,11 +932,19 @@ export default function Commandes() {
   const user = useAuth((s) => s.user);
   const isProduction = user?.role === "Responsable Production";
   const [view, setView] = useState<"kanban" | "list">("kanban");
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+
+  const canAccessClients =
+    user?.role === "Admin" || user?.role === "Responsable Commercial";
 
   const reload = () => {
+    const clientsPromise = canAccessClients
+      ? api.clients.getAll()
+      : Promise.resolve([] as Client[]);
+
     Promise.all([
       api.orders.getAll(),
-      api.clients.getAll(),
+      clientsPromise,
       api.products.getAll(),
     ])
       .then(([ords, cls, prods]) => {
@@ -805,7 +1032,8 @@ export default function Commandes() {
                 <List className="h-4 w-4 mr-1" />Liste
               </Button>
             </div>
-            {view === "kanban" ? <CommercialKanban /> : <CommercialListView />}
+            {view === "kanban" ? <CommercialKanban onSelect={setDetailOrderId} /> : <CommercialListView onSelect={setDetailOrderId} />}
+            <OrderDetailDialog orderId={detailOrderId} onClose={() => setDetailOrderId(null)} />
           </TabsContent>
           <TabsContent value="new" className="mt-4"><NewOrder /></TabsContent>
           <TabsContent value="track" className="mt-4"><Tracking /></TabsContent>

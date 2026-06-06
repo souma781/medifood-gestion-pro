@@ -21,6 +21,7 @@ export type ProductionEntry = {
   id: string;
   date: string;
   productId: string;
+  productName?: string;
   produced: number;
   packaged: number;
   lot: string;
@@ -92,6 +93,12 @@ export type BonLivraison = {
   id: string;
   number: string;
   clientId: string;
+  clientName?: string;
+  clientCompany?: string;
+  clientAddress?: string;
+  clientCity?: string;
+  clientPhone?: string;
+  clientNumber?: string;
   orderId?: string;
   date: string;
   deliveryDate: string;
@@ -100,6 +107,7 @@ export type BonLivraison = {
   notes?: string;
   chauffeur?: string;
   matriculeFiscale?: string;
+  preparedBy?: string;
 };
 
 export type NotificationType = "stock_insuffisant" | "panne_machine" | "commande_refusée" | "manque_ouvriers" | "autre";

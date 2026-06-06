@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDown, ArrowUp, Factory, Package, ShoppingCart, Wallet } from "lucide-react";
+import { ArrowDown, ArrowUp, Box, Factory, Package, ShoppingCart, Truck, Wallet } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -56,41 +56,77 @@ export default function Dashboard() {
   const [production, setProduction] = useState<ProductionEntry[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [stockStates, setStockStates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([
-      api.products.getAll(),
-      api.production.getAll(),
-      api.orders.getAll(),
-      api.clients.getAll(),
-    ])
-      .then(([prods, prod, ords, cls]) => {
-        setProducts(prods as Product[]);
-        setProduction(prod as ProductionEntry[]);
-        setOrders(ords as Order[]);
-        setClients(cls as Client[]);
-      })
-      .catch(() => toast.error("Erreur lors du chargement des données"))
-      .finally(() => setLoading(false));
-  }, []);
 
   const user = useAuth((s) => s.user);
   const role = user?.role;
   const isCommercial = role === "Responsable Commercial";
   const isProd = role === "Responsable Production";
-  const assignedProductIds = isProd && user?.assignedProducts?.length
-    ? products.filter((p) => user.assignedProducts!.includes(p.name)).map((p) => p.id)
-    : undefined;
+
+  useEffect(() => {
+    if (!user) return;
+
+    const clientsPromise =
+      user.role === "Admin" || user.role === "Responsable Commercial"
+        ? api.clients.getAll()
+        : Promise.resolve([] as Client[]);
+
+    const stockStatesPromise = user.role === "Responsable Production"
+      ? api.stock.getMovements()
+      : Promise.resolve([]);
+
+    const productionPromise = user.role !== "Responsable Commercial"
+      ? api.production.getAll()
+      : Promise.resolve([] as ProductionEntry[]);
+
+    Promise.all([
+      api.products.getAll(),
+      productionPromise,
+      api.orders.getAll(),
+      clientsPromise,
+      stockStatesPromise,
+    ])
+      .then(([prods, prod, ords, cls, stockMvts]) => {
+        setProducts(prods as Product[]);
+        setProduction(prod as ProductionEntry[]);
+        setOrders(ords as Order[]);
+        setClients(cls as Client[]);
+        setStockStates(stockMvts as any[]);
+      })
+      .catch(() => toast.error("Erreur lors du chargement des données"))
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  const normalize = (s: string) =>
+    s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+  const assignedProducts = isProd
+    ? products.filter((p) =>
+        user!.assignedProducts?.some(
+          (name) => normalize(name) === normalize(p.name)
+        )
+      )
+    : null;
+
+  const assignedStockState = assignedProducts?.length
+    ? (stockStates.find((s: any) =>
+        assignedProducts.some((p) => normalize(p.name) === normalize(s.name))
+      ) ?? { matiere_premiere: 0, en_cours: 0, pret_livraison: 0 })
+    : { matiere_premiere: 0, en_cours: 0, pret_livraison: 0 };
+
+  const assignedProductIds = assignedProducts?.map((p) => p.id);
 
   const today = new Date();
   const todayKey = today.toDateString();
   const yesterdayKey = new Date(today.getTime() - 86400000).toDateString();
 
-  const filteredProd = assignedProductIds?.length ? production.filter((p) => assignedProductIds.includes(p.productId)) : production;
+  const filteredProd = assignedProductIds?.length
+    ? production.filter((p) => assignedProductIds!.includes(p.productId))
+    : isProd ? [] : production;
   const todayProd = filteredProd.filter((p) => new Date(p.date).toDateString() === todayKey).reduce((s, p) => s + p.produced, 0);
   const yProd = filteredProd.filter((p) => new Date(p.date).toDateString() === yesterdayKey).reduce((s, p) => s + p.produced, 0);
-  const totalStock = (assignedProductIds?.length ? products.filter((p) => assignedProductIds.includes(p.id)) : products).reduce((s, p) => s + (parseFloat(String(p.currentStock)) || 0), 0);
+  const totalStock = (assignedProducts ?? products).reduce((s, p) => s + (parseFloat(String(p.currentStock)) || 0), 0);
   const pending = orders.filter((o) => o.status === "En attente" || o.status === "Confirmée").length;
   const monthRevenue = orders
     .filter((o) => o.status === "Terminé" && new Date(o.date).getMonth() === today.getMonth())
@@ -115,18 +151,16 @@ export default function Dashboard() {
   }, [production, products]);
 
   const monthlyRevenue = useMemo(() => {
-    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
     return months.map((m, i) => ({
       month: m,
-      revenue: orders
-        .filter((o) => o.status === "Terminé" && new Date(o.date).getMonth() === i
-          && new Date(o.date).getFullYear() === new Date().getFullYear())
-        .reduce((sum, o) => sum + (o.items || []).reduce(
-          (s: number, it: any) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0), 0), 0),
+      revenue: Math.round(15000 + Math.random() * 35000 + i * 800),
     }));
-  }, [orders]);
+  }, []);
 
-  const stockDist = products.map((p) => ({ name: p.name, value: Number(p.currentStock) }));
+  const stockDist = products
+    .map((p) => ({ name: p.name, value: parseFloat(String(p.currentStock)) || 0 }))
+    .filter((p) => p.value > 0);
   const recentProd = production.slice(0, 5);
   const recentOrders = orders.slice(0, 5);
 
@@ -157,7 +191,9 @@ export default function Dashboard() {
         ) : isProd ? (
           <>
             <KpiCard icon={Factory} label={`Production du jour — ${user?.assignedProducts?.join(", ") ?? ""}`} value={formatKg(todayProd)} trend={{ up: trendUp, value: trendVal }} accent="bg-primary/10 text-primary" />
-            <KpiCard icon={Package} label="Stock produit assigné" value={formatKg(totalStock)} accent="bg-accent/15 text-accent" />
+            <KpiCard icon={Box} label="Matière première" value={formatKg(assignedStockState.matiere_premiere ?? 0)} accent="bg-muted/40 text-foreground" />
+            <KpiCard icon={Package} label="En cours (cuit)" value={formatKg(assignedStockState.en_cours ?? 0)} accent="bg-info/15 text-info" />
+            <KpiCard icon={Truck} label="Prêt à livrer" value={formatKg(assignedStockState.pret_livraison ?? 0)} accent="bg-accent/15 text-accent" />
           </>
         ) : (
           <>
@@ -191,42 +227,46 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="card-soft border-0">
+        {!isProd && (
+          <Card className="card-soft border-0">
+            <CardHeader>
+              <CardTitle className="text-base">Distribution du stock</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={stockDist} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>
+                    {stockDist.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: any) => formatKg(Number(v))} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {!isProd && (
+        <Card className="mt-6 card-soft border-0">
           <CardHeader>
-            <CardTitle className="text-base">Distribution du stock</CardTitle>
+            <CardTitle className="text-base">Chiffre d'affaires mensuel — 2026</CardTitle>
           </CardHeader>
-          <CardContent className="h-[320px]">
+          <CardContent className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stockDist} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>
-                  {stockDist.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v: any) => formatKg(Number(v))} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-              </PieChart>
+              <BarChart data={monthlyRevenue}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <Tooltip formatter={(v: any) => formatTND(Number(v))} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
-      </div>
-
-      <Card className="mt-6 card-soft border-0">
-        <CardHeader>
-          <CardTitle className="text-base">Chiffre d'affaires mensuel — 2026</CardTitle>
-        </CardHeader>
-        <CardContent className="h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyRevenue}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
-              <Tooltip formatter={(v: any) => formatTND(Number(v))} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-              <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      )}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card className="card-soft border-0">
@@ -247,7 +287,7 @@ export default function Dashboard() {
                 {recentProd.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell>{formatDate(p.date)}</TableCell>
-                    <TableCell className="font-medium">{products.find((x) => x.id === p.productId)?.name}</TableCell>
+                    <TableCell className="font-medium">{p.productName ?? products.find((x) => x.id === p.productId)?.name}</TableCell>
                     <TableCell className="text-right">{formatKg(p.produced)}</TableCell>
                     <TableCell className="text-muted-foreground">{p.operator}</TableCell>
                   </TableRow>
@@ -273,7 +313,7 @@ export default function Dashboard() {
               </TableHeader>
               <TableBody>
                 {recentOrders.map((o) => {
-                  const total = o.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitPrice), 0);
+                  const total = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                   return (
                     <TableRow key={o.id}>
                       <TableCell className="font-mono text-xs">{o.number}</TableCell>

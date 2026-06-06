@@ -145,8 +145,8 @@ function HistoryTable({ production, products, onDelete }: HistoryTableProps) {
   const [viewing, setViewing] = useState<string | null>(null);
 
   const filtered = production.filter((p) => {
-    if (assignedIds?.length && !assignedIds.includes(p.productId)) return false;
-    if (productFilter !== "all" && p.productId !== productFilter) return false;
+    if (assignedIds?.length && !assignedIds.includes(p.product_id ?? p.productId)) return false;
+    if (productFilter !== "all" && (p.product_id ?? p.productId) !== productFilter) return false;
     if (search && !p.lot.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -272,7 +272,7 @@ function Stats({ production: allProd, products: allProducts }: StatsProps) {
     : allProducts;
   const productIds = new Set(products.map((p) => p.id));
   const production = user?.role === "Responsable Production"
-    ? allProd.filter((p) => productIds.has(p.productId))
+    ? allProd.filter((p) => productIds.has(p.product_id ?? p.productId))
     : allProd;
 
   const lineData = useMemo(() => {
@@ -282,7 +282,7 @@ function Stats({ production: allProd, products: allProducts }: StatsProps) {
       const k = d.toDateString();
       const row: any = { day: `${d.getDate()}/${d.getMonth() + 1}` };
       products.forEach((p) => {
-        row[p.name] = production.filter((x) => x.productId === p.id && new Date(x.date).toDateString() === k).reduce((s, x) => s + x.produced, 0);
+        row[p.name] = production.filter((x) => (x.product_id ?? x.productId) === p.id && new Date(x.date).toDateString() === k).reduce((s, x) => s + x.produced, 0);
       });
       days.push(row);
     }
@@ -290,7 +290,7 @@ function Stats({ production: allProd, products: allProducts }: StatsProps) {
   }, [production, products]);
 
   const compareData = products.map((p) => {
-    const all = production.filter((x) => x.productId === p.id);
+    const all = production.filter((x) => (x.product_id ?? x.productId) === p.id);
     return { name: p.name, produced: all.reduce((s, x) => s + x.produced, 0), packaged: all.reduce((s, x) => s + x.packaged, 0) };
   });
 

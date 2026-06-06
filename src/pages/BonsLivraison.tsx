@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,24 +51,23 @@ function PrintStyles() {
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
 
       @media print {
-        @page { size: A4 portrait; margin: 0; }
-        body * { visibility: hidden !important; }
-        #bl-print-container,
-        #bl-print-container * { visibility: visible !important; }
-        #bl-print-container {
-          position: absolute !important;
+        @page { size: A4 portrait; margin: 12mm 15mm; }
+
+        body > * { display: none !important; }
+
+        #bl-print-root {
+          display: block !important;
+          position: fixed !important;
           top: 0 !important;
           left: 0 !important;
-          width: 210mm !important;
-          padding: 12mm 15mm !important;
-          font-size: 10px !important;
-          font-family: Arial, sans-serif !important;
+          width: 100% !important;
+          z-index: 99999 !important;
           background: white !important;
-          color: black !important;
-          box-shadow: none !important;
         }
-        .no-print { display: none !important; }
-        table { page-break-inside: avoid; }
+
+        #bl-print-root * {
+          visibility: visible !important;
+        }
       }
     `}</style>
   );
@@ -75,10 +75,16 @@ function PrintStyles() {
 
 // ─── BonPreview ───────────────────────────────────────────────────────────────
 
-function BonPreview({ bon, onClose }: { bon: BonLivraison; onClose: () => void }) {
+function BonPreview({ bon, onClose, autoPrint }: { bon: BonLivraison; onClose: () => void; autoPrint?: boolean }) {
   const { clients } = useBonsCtx();
   const { user } = useAuth();
   const client = clients.find((c) => c.id === bon.clientId);
+
+  useEffect(() => {
+    if (!autoPrint) return;
+    const timer = setTimeout(() => window.print(), 800);
+    return () => clearTimeout(timer);
+  }, [autoPrint, bon]);
 
   const grandTotal = blTotal(bon);
   const dinars = Math.floor(grandTotal);
@@ -107,146 +113,160 @@ function BonPreview({ bon, onClose }: { bon: BonLivraison; onClose: () => void }
     textAlign: "center",
   };
 
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        className="max-w-[870px] max-h-[95vh] overflow-y-auto p-0"
-        style={{ fontFamily: "Arial, sans-serif" }}
-      >
-        <PrintStyles />
+  const bonContent = (
+    <>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px" }}>
+        <tbody>
+          <tr>
+            <td style={{ width: "36%", verticalAlign: "top", fontSize: "10px", lineHeight: "1.5" }}>
+              <strong>STE MEDIFOOD</strong><br />
+              Mediterranean Food Process &amp; Packing<br />
+              Route Gremda km 9 Z.I.<br />
+              Tanyour, BP. 147 – 3071 SFAX<br />
+              Tél.: 74 657 208 – Fax: 74 657 209<br />
+              MF : 1310342D/A/M/000<br />
+              RC : B81151862013
+            </td>
+            <td style={{ width: "28%", textAlign: "center", verticalAlign: "middle" }}>
+              <img src={elMadinaLogo} alt="EL MADINA – MEDIFOOD" style={{ maxHeight: "70px", maxWidth: "140px", objectFit: "contain" }} />
+            </td>
+            <td style={{ width: "36%", textAlign: "right", verticalAlign: "top", direction: "rtl", fontFamily: "'Noto Sans Arabic', Arial, sans-serif", fontSize: "10px", lineHeight: "1.6" }}>
+              <strong style={{ fontSize: "13px" }}>ماديفود</strong><br />
+              المتوسطية للتحويل الغذائي و التعليب<br />
+              طريق قرمدة كلم 9 المنطقة الصناعية<br />
+              قصاصر تنيور ص. ب 147 - 3071 صفاقس<br />
+              الهاتف : 74 657 208 / الفاكس : 74 657 209<br />
+              المعرف الجبائي : 1310342D/A/M/000<br />
+              السجل التجاري : B81151862013
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-        <div className="no-print flex items-center justify-between px-4 py-2 border-b" style={{ background: "#f8f8f8" }}>
-          <span className="font-semibold text-sm">Aperçu — BL {bon.number}</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>Fermer</Button>
-            <Button size="sm" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-1" />Imprimer
-            </Button>
-          </div>
-        </div>
+      <hr style={{ border: "none", borderTop: "1px solid #333", margin: "4px 0 8px 0" }} />
 
-        <div
-          id="bl-print-container"
-          style={{ fontFamily: "Arial, sans-serif", fontSize: "10px", color: "#000", padding: "12mm 15mm", maxWidth: "210mm", margin: "0 auto", background: "#fff" }}
-        >
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px" }}>
-            <tbody>
-              <tr>
-                <td style={{ width: "36%", verticalAlign: "top", fontSize: "10px", lineHeight: "1.5" }}>
-                  <strong>STE MEDIFOOD</strong><br />
-                  Mediterranean Food Process &amp; Packing<br />
-                  Route Gremda km 9 Z.I.<br />
-                  Tanyour, BP. 147 – 3071 SFAX<br />
-                  Tél.: 74 657 208 – Fax: 74 657 209<br />
-                  MF : 1310342D/A/M/000<br />
-                  RC : B81151862013
-                </td>
-                <td style={{ width: "28%", textAlign: "center", verticalAlign: "middle" }}>
-                  <img src={elMadinaLogo} alt="EL MADINA – MEDIFOOD" style={{ maxHeight: "70px", maxWidth: "140px", objectFit: "contain" }} />
-                </td>
-                <td style={{ width: "36%", textAlign: "right", verticalAlign: "top", direction: "rtl", fontFamily: "'Noto Sans Arabic', Arial, sans-serif", fontSize: "10px", lineHeight: "1.6" }}>
-                  <strong style={{ fontSize: "13px" }}>ماديفود</strong><br />
-                  المتوسطية للتحويل الغذائي و التعليب<br />
-                  طريق قرمدة كلم 9 المنطقة الصناعية<br />
-                  قصاصر تنيور ص. ب 147 - 3071 صفاقس<br />
-                  الهاتف : 74 657 208 / الفاكس : 74 657 209<br />
-                  المعرف الجبائي : 1310342D/A/M/000<br />
-                  السجل التجاري : B81151862013
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <hr style={{ border: "none", borderTop: "1px solid #333", margin: "4px 0 8px 0" }} />
-
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px" }}>
-            <tbody>
-              <tr style={{ verticalAlign: "top" }}>
-                <td style={{ width: "38%", paddingRight: "12px" }}>
-                  <div style={{ fontWeight: "bold", fontSize: "16px", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>BON DE LIVRAISON</div>
-                  <table style={{ borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ ...hCell, width: "90px" }}>Numéro</th>
-                        <th style={{ ...hCell, width: "90px" }}>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td style={{ ...cell, textAlign: "center", fontWeight: "bold" }}>{bon.number}</td>
-                        <td style={{ ...cell, textAlign: "center" }}>{formatDate(bon.date)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </td>
-                <td style={{ border: "1px solid #333", padding: "6px 10px", fontSize: "10px", lineHeight: "1.6" }}>
-                  <div>Client N° : <strong style={{ fontSize: "11px" }}>{clientNum}</strong></div>
-                  <div style={{ fontWeight: "bold", fontSize: "12px", textTransform: "uppercase", margin: "1px 0" }}>{client?.company}</div>
-                  <div>{client?.address}</div>
-                  <div>{client?.postalCode} {client?.city}</div>
-                  <div>Tél.: {client?.phone} &nbsp;&nbsp; Fax :</div>
-                  <div>Matricule fiscale : <span style={{ fontFamily: "monospace" }}>{matricule}</span></div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style={{ textAlign: "right", fontSize: "9px", marginBottom: "4px" }}>Page 1 / 1</div>
-
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px", marginBottom: "8px" }}>
-            <thead>
-              <tr>
-                <th style={{ ...hCell, width: "4%" }}>N°</th>
-                <th style={{ ...hCell, width: "46%", textAlign: "left", paddingLeft: "6px" }}>Désignation</th>
-                <th style={{ ...hCell, width: "8%" }}>U.</th>
-                <th style={{ ...hCell, width: "10%" }}>Qté</th>
-                <th style={{ ...hCell, width: "16%" }}>Prix U.</th>
-                <th style={{ ...hCell, width: "16%" }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: rowCount }).map((_, i) => {
-                const item = bon.items[i] as BonItem | undefined;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const lineTotal = item ? parseFloat(String(item.quantity)) * parseFloat(String((item as any).unit_price ?? item.unitPrice ?? 0)) : 0;
-                return (
-                  <tr key={i} style={{ height: "18px" }}>
-                    <td style={{ ...cell, textAlign: "center" }}>{item ? i + 1 : ""}</td>
-                    <td style={{ ...cell }}>{item?.designation ?? ""}</td>
-                    <td style={{ ...cell, textAlign: "center" }}>{item?.unit ?? ""}</td>
-                    <td style={{ ...cell, textAlign: "center" }}>{item ? item.quantity : ""}</td>
-                    <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(parseFloat(String((item as any).unit_price ?? item.unitPrice ?? 0))) : ""}</td>
-                    <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(lineTotal) : ""}</td>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px" }}>
+        <tbody>
+          <tr style={{ verticalAlign: "top" }}>
+            <td style={{ width: "38%", paddingRight: "12px" }}>
+              <div style={{ fontWeight: "bold", fontSize: "16px", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>BON DE LIVRAISON</div>
+              <table style={{ borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...hCell, width: "90px" }}>Numéro</th>
+                    <th style={{ ...hCell, width: "90px" }}>Date</th>
                   </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={4} style={{ border: "1px solid #333", padding: "3px" }} />
-                <td style={{ ...cell, textAlign: "right", fontWeight: "bold", backgroundColor: "#f0f0f0" }}>Total</td>
-                <td style={{ ...cell, textAlign: "right", fontWeight: "bold" }}>{formatPriceTND(grandTotal)}</td>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ ...cell, textAlign: "center", fontWeight: "bold" }}>{bon.number}</td>
+                    <td style={{ ...cell, textAlign: "center" }}>{formatDate(bon.date)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+            <td style={{ border: "1px solid #333", padding: "6px 10px", fontSize: "10px", lineHeight: "1.6" }}>
+              <div>Client N° : <strong style={{ fontSize: "11px" }}>{clientNum}</strong></div>
+              <div style={{ fontWeight: "bold", fontSize: "12px", textTransform: "uppercase", margin: "1px 0" }}>{client?.company}</div>
+              <div>{client?.address}</div>
+              <div>{client?.postalCode} {client?.city}</div>
+              <div>Tél.: {client?.phone} &nbsp;&nbsp; Fax :</div>
+              <div>Matricule fiscale : <span style={{ fontFamily: "monospace" }}>{matricule}</span></div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style={{ textAlign: "right", fontSize: "9px", marginBottom: "4px" }}>Page 1 / 1</div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px", marginBottom: "8px" }}>
+        <thead>
+          <tr>
+            <th style={{ ...hCell, width: "4%" }}>N°</th>
+            <th style={{ ...hCell, width: "46%", textAlign: "left", paddingLeft: "6px" }}>Désignation</th>
+            <th style={{ ...hCell, width: "8%" }}>U.</th>
+            <th style={{ ...hCell, width: "10%" }}>Qté</th>
+            <th style={{ ...hCell, width: "16%" }}>Prix U.</th>
+            <th style={{ ...hCell, width: "16%" }}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rowCount }).map((_, i) => {
+            const item = bon.items[i] as BonItem | undefined;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const lineTotal = item ? parseFloat(String(item.quantity)) * parseFloat(String((item as any).unit_price ?? item.unitPrice ?? 0)) : 0;
+            return (
+              <tr key={i} style={{ height: "18px" }}>
+                <td style={{ ...cell, textAlign: "center" }}>{item ? i + 1 : ""}</td>
+                <td style={{ ...cell }}>{item?.designation ?? ""}</td>
+                <td style={{ ...cell, textAlign: "center" }}>{item?.unit ?? ""}</td>
+                <td style={{ ...cell, textAlign: "center" }}>{item ? item.quantity : ""}</td>
+                <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(parseFloat(String((item as any).unit_price ?? item.unitPrice ?? 0))) : ""}</td>
+                <td style={{ ...cell, textAlign: "right" }}>{item ? formatPriceTND(lineTotal) : ""}</td>
               </tr>
-            </tfoot>
-          </table>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={4} style={{ border: "1px solid #333", padding: "3px" }} />
+            <td style={{ ...cell, textAlign: "right", fontWeight: "bold", backgroundColor: "#f0f0f0" }}>Total</td>
+            <td style={{ ...cell, textAlign: "right", fontWeight: "bold" }}>{formatPriceTND(grandTotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
 
-          <div style={{ fontSize: "10px", marginBottom: "14px", borderTop: "1px solid #ccc", paddingTop: "6px" }}>
-            <div>Arrêté le présent bon de livraison à la somme de :</div>
-            <div style={{ fontWeight: "bold", marginTop: "2px" }}>{amountWords}</div>
-          </div>
+      <div style={{ fontSize: "10px", marginBottom: "14px", borderTop: "1px solid #ccc", paddingTop: "6px" }}>
+        <div>Arrêté le présent bon de livraison à la somme de :</div>
+        <div style={{ fontWeight: "bold", marginTop: "2px" }}>{amountWords}</div>
+      </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: "8px" }}>
-            <div style={{ fontSize: "10px", lineHeight: "2" }}>
-              <div>Chauffeur : <span style={{ borderBottom: "1px solid #333", paddingRight: "80px" }}>{bon.chauffeur ?? ""}</span></div>
-              <div style={{ marginTop: "10px" }}>BL Préparé par : <span style={{ borderBottom: "1px solid #333", paddingRight: "60px" }}>{user?.name ?? ""}</span></div>
-            </div>
-            <div style={{ border: "2px solid #333", width: "110px", height: "70px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", textAlign: "center", color: "#555", borderRadius: "4px", flexShrink: 0 }}>
-              Cachet et<br />Signature
-            </div>
-          </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: "8px" }}>
+        <div style={{ fontSize: "10px", lineHeight: "2" }}>
+          <div>Chauffeur : <span style={{ borderBottom: "1px solid #333", paddingRight: "80px" }}>{bon.chauffeur ?? ""}</span></div>
+          <div style={{ marginTop: "10px" }}>BL Préparé par : <span style={{ borderBottom: "1px solid #333", paddingRight: "60px" }}>{user?.name ?? ""}</span></div>
         </div>
-      </DialogContent>
-    </Dialog>
+        <div style={{ border: "2px solid #333", width: "110px", height: "70px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", textAlign: "center", color: "#555", borderRadius: "4px", flexShrink: 0 }}>
+          Cachet et<br />Signature
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent
+          className="max-w-[870px] max-h-[95vh] overflow-y-auto p-0"
+          style={{ fontFamily: "Arial, sans-serif" }}
+        >
+          <PrintStyles />
+
+          <div className="no-print flex items-center justify-between px-4 py-2 border-b" style={{ background: "#f8f8f8" }}>
+            <span className="font-semibold text-sm">Aperçu — BL {bon.number}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={onClose}>Fermer</Button>
+              <Button size="sm" onClick={() => window.print()}>
+                <Printer className="h-4 w-4 mr-1" />Imprimer
+              </Button>
+            </div>
+          </div>
+
+          <div
+            id="bl-print-container"
+            style={{ fontFamily: "Arial, sans-serif", fontSize: "10px", color: "#000", padding: "12mm 15mm", maxWidth: "210mm", margin: "0 auto", background: "#fff" }}
+          >
+            {bonContent}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {createPortal(
+        <div id="bl-print-root" style={{ fontFamily: "Arial, sans-serif", fontSize: "10px", color: "#000" }}>
+          {bonContent}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -255,14 +275,16 @@ function BonPreview({ bon, onClose }: { bon: BonLivraison; onClose: () => void }
 function BonList() {
   const { bons, clients, orders, updateBonStatus } = useBonsCtx();
   const [previewing, setPreviewing] = useState<string | null>(null);
+  const [autoPrint, setAutoPrint] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("all");
 
   const filtered = bons.filter((b) => {
-    const c = clients.find((x) => x.id === b.clientId);
-    if (search && !(c?.company.toLowerCase().includes(search.toLowerCase()) || c?.name.toLowerCase().includes(search.toLowerCase()))) return false;
+    const company = b.clientCompany ?? clients.find((x) => x.id === b.clientId)?.company ?? "";
+    const name = b.clientName ?? clients.find((x) => x.id === b.clientId)?.name ?? "";
+    if (search && !(company.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))) return false;
     if (status !== "all" && b.status !== status) return false;
     if (from && new Date(b.date) < new Date(from)) return false;
     if (to && new Date(b.date) > new Date(to)) return false;
@@ -315,7 +337,7 @@ function BonList() {
               return (
                 <TableRow key={b.id}>
                   <TableCell className="font-mono text-xs">{b.number}</TableCell>
-                  <TableCell className="font-medium">{clients.find((c) => c.id === b.clientId)?.company}</TableCell>
+                  <TableCell className="font-medium">{b.clientCompany ?? clients.find((c) => c.id === b.clientId)?.company}</TableCell>
                   <TableCell>{formatDate(b.date)}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{order?.number ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{b.items.length} ligne(s)</TableCell>
@@ -325,7 +347,7 @@ function BonList() {
                     <Button size="icon" variant="ghost" title="Aperçu" onClick={() => setPreviewing(b.id)}>
                       <Eye className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" title="Imprimer" onClick={() => { setPreviewing(b.id); setTimeout(() => window.print(), 400); }}>
+                    <Button size="icon" variant="ghost" title="Imprimer" onClick={() => { setAutoPrint(true); setPreviewing(b.id); }}>
                       <Printer className="h-4 w-4" />
                     </Button>
                     {b.status !== "Livré" && (
@@ -347,7 +369,7 @@ function BonList() {
           </TableBody>
         </Table>
       </CardContent>
-      {current && <BonPreview bon={current} onClose={() => setPreviewing(null)} />}
+      {current && <BonPreview bon={current} autoPrint={autoPrint} onClose={() => { setPreviewing(null); setAutoPrint(false); }} />}
     </Card>
   );
 }
@@ -604,10 +626,17 @@ export default function BonsLivraison() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const reload = () =>
-    Promise.all([
+  const user = useAuth((s) => s.user);
+
+  const reload = () => {
+    const clientsPromise =
+      user?.role === "Admin" || user?.role === "Responsable Commercial"
+        ? api.clients.getAll()
+        : Promise.resolve([] as Client[]);
+
+    return Promise.all([
       api.bons.getAll(),
-      api.clients.getAll(),
+      clientsPromise,
       api.orders.getAll(),
       api.products.getAll(),
     ])
@@ -619,6 +648,7 @@ export default function BonsLivraison() {
       })
       .catch(() => toast.error("Erreur lors du chargement des données"))
       .finally(() => setLoading(false));
+  };
 
   useEffect(() => { reload(); }, []);
 

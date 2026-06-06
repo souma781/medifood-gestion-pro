@@ -1,15 +1,9 @@
+import { useAuth } from "@/store/auth";
+
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 function getToken(): string | null {
-    // Zustand persiste le token dans localStorage sous "medifood-auth"
-    try {
-        const stored = localStorage.getItem("medifood-auth");
-        if (!stored) return null;
-        const parsed = JSON.parse(stored);
-        return parsed?.state?.token ?? null;
-    } catch {
-        return null;
-    }
+    return useAuth.getState().token ?? null;
 }
 
 async function request<T>(
